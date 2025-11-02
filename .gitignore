@@ -1,0 +1,33 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+metabot_creator.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Runtime
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary
+tmp/
+temp/
