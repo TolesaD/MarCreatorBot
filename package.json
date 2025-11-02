@@ -4,7 +4,7 @@
   "description": "A Telegram bot that allows users to create and manage their own mini-bots without coding knowledge",
   "main": "src/app.js",
   "scripts": {
-    "start": "node railway-start.js",
+    "start": "node start-railway.js",
     "dev": "nodemon src/app.js",
     "debug": "node debug-env.js",
     "polling": "node src/app-polling.js",
