@@ -15,21 +15,23 @@ const myBotsHandler = async (ctx) => {
     
     console.log(`🔍 DEBUG: Found ${ownedBots.length} owned bots`);
     
-    // Get bots where user is admin (but NOT owner) - FIXED VERSION
+    // SIMPLIFIED: Get admin bots without complex includes
     const adminRecords = await Admin.findAll({
       where: { admin_user_id: userId }
     });
     
     console.log(`🔍 DEBUG: Found ${adminRecords.length} admin records`);
     
-    // Get the actual bot records for admin roles
+    // Get bot IDs from admin records
     const adminBotIds = adminRecords.map(record => record.bot_id);
-    const adminBots = await Bot.findAll({
+    
+    // Fetch the actual bot records
+    const adminBots = adminBotIds.length > 0 ? await Bot.findAll({
       where: { 
         id: adminBotIds,
         owner_id: { $ne: userId } // EXCLUDE owned bots
       }
-    });
+    }) : [];
     
     console.log(`🔍 DEBUG: Found ${adminBots.length} admin-only bots`);
     
@@ -38,7 +40,7 @@ const myBotsHandler = async (ctx) => {
     
     console.log(`🔍 DEBUG: Total unique bots in myBotsHandler: ${allBots.length}`);
     allBots.forEach(bot => {
-      console.log(`   - ${bot.bot_name} (ID: ${bot.id})`);
+      console.log(`   - ${bot.bot_name} (ID: ${bot.id}) - Owner: ${bot.owner_id === userId}`);
     });
     
     if (allBots.length === 0) {

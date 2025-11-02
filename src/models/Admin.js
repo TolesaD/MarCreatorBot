@@ -53,13 +53,6 @@ const Admin = sequelize.define('Admin', {
   ]
 });
 
-// Add User association for the admin lookup
-Admin.belongsTo(require('./User'), { 
-  foreignKey: 'admin_user_id', 
-  targetKey: 'telegram_id', 
-  as: 'User' 
-});
-
 // Static method to check if user can manage bot
 Admin.canManageBot = async function(botId, userId) {
   try {
