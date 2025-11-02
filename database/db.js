@@ -6,20 +6,24 @@ const path = require('path');
 let sequelize;
 
 console.log(`🗄️ Database configuration: ${config.DATABASE_DIALECT}`);
+console.log(`🌐 Environment: ${config.NODE_ENV}`);
 
+// CRITICAL FIX: Proper database configuration for Railway
 if (config.DATABASE_DIALECT === 'postgres' && config.DATABASE_URL) {
-  // PostgreSQL configuration for production
-  console.log('🔄 Configuring PostgreSQL database...');
+  console.log('🔄 Configuring PostgreSQL database for Railway...');
+  
+  // Parse DATABASE_URL for better configuration
+  const dbUrl = new URL(config.DATABASE_URL);
   
   sequelize = new Sequelize(config.DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    dialectOptions: config.NODE_ENV === 'production' ? {
-      ssl: {
+    dialectOptions: {
+      ssl: config.NODE_ENV === 'production' ? {
         require: true,
         rejectUnauthorized: false
-      }
-    } : {},
+      } : false
+    },
     logging: config.LOG_LEVEL === 'debug' ? console.log : false,
     pool: {
       max: config.DATABASE_POOL_MAX || 20,
@@ -28,12 +32,22 @@ if (config.DATABASE_DIALECT === 'postgres' && config.DATABASE_URL) {
       idle: config.DATABASE_POOL_IDLE || 10000
     },
     retry: {
-      max: 3
+      max: 5,
+      timeout: 30000
+    },
+    // Add connection timeout
+    connectTimeout: 60000,
+    // Better reconnection settings
+    reconnect: {
+      max_retries: 5,
+      onRetry: function(count) {
+        console.log(`🔄 Database reconnection attempt ${count}`);
+      }
     }
   });
 } else {
-  // SQLite configuration for development (with PostgreSQL compatibility)
-  console.log('🔄 Configuring SQLite database (PostgreSQL compatible)...');
+  // SQLite configuration for development
+  console.log('🔄 Configuring SQLite database...');
   
   let dbPath = config.DATABASE_URL || './metabot_creator.db';
   if (dbPath.startsWith('./')) {
@@ -52,15 +66,6 @@ if (config.DATABASE_DIALECT === 'postgres' && config.DATABASE_URL) {
     dialect: 'sqlite',
     storage: dbPath,
     logging: config.LOG_LEVEL === 'debug' ? console.log : false,
-    // SQLite settings for better PostgreSQL compatibility
-    dialectOptions: {
-      // Enable foreign keys and other PostgreSQL-like features
-    },
-    // Use PostgreSQL-compatible settings
-    define: {
-      timestamps: true, // Use createdAt, updatedAt (PostgreSQL style)
-      underscored: false, // Use camelCase (PostgreSQL style)
-    },
     pool: {
       max: 5,
       min: 0,
@@ -74,50 +79,88 @@ if (config.DATABASE_DIALECT === 'postgres' && config.DATABASE_URL) {
 }
 
 const connectDB = async () => {
-  try {
-    console.log('🔄 Connecting to database...');
-    await sequelize.authenticate();
-    console.log('✅ Database connected successfully');
-    
-    // Enable PostgreSQL-compatible features for SQLite
-    if (config.DATABASE_DIALECT === 'sqlite') {
-      await sequelize.query('PRAGMA foreign_keys = ON');
-      await sequelize.query('PRAGMA journal_mode = WAL');
-      console.log('✅ SQLite optimized for PostgreSQL compatibility');
+  let retries = 5;
+  
+  while (retries > 0) {
+    try {
+      console.log('🔄 Connecting to database...');
+      await sequelize.authenticate();
+      console.log('✅ Database connected successfully');
+      
+      // Enable PostgreSQL-compatible features for SQLite
+      if (config.DATABASE_DIALECT === 'sqlite') {
+        await sequelize.query('PRAGMA foreign_keys = ON');
+        await sequelize.query('PRAGMA journal_mode = WAL');
+        console.log('✅ SQLite optimized');
+      }
+      
+      // Sync all models with safe approach
+      const syncOptions = config.NODE_ENV === 'production' 
+        ? { alter: true, force: false }  // Use alter in production to preserve data
+        : { alter: true, force: false };
+      
+      console.log('🔄 Synchronizing database models...');
+      await sequelize.sync(syncOptions);
+      console.log('✅ Database synchronized successfully');
+      
+      // Verify we can query the database
+      const { Bot } = require('../models');
+      const botCount = await Bot.count();
+      console.log(`📊 Verified database: ${botCount} bots found`);
+      
+      return true;
+    } catch (error) {
+      console.error(`❌ Database connection failed (${retries} retries left):`, error.message);
+      
+      retries -= 1;
+      if (retries === 0) {
+        console.error('💥 All database connection attempts failed');
+        
+        // Provide helpful error messages
+        if (config.DATABASE_DIALECT === 'postgres') {
+          console.error('💡 PostgreSQL connection tips:');
+          console.error('   - Check if DATABASE_URL is correct in Railway');
+          console.error('   - Verify PostgreSQL addon is provisioned');
+          console.error('   - Check Railway project variables');
+        } else {
+          console.error('💡 SQLite connection tips:');
+          console.error('   - Check file permissions for database file');
+          console.error('   - Ensure sufficient disk space');
+        }
+        
+        // Don't exit in production, try to continue
+        if (config.NODE_ENV === 'production') {
+          console.log('⚠️  Continuing without database connection...');
+          return false;
+        } else {
+          process.exit(1);
+        }
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
-    
-    // Sync all models with safe approach
-    const syncOptions = config.NODE_ENV === 'production' 
-      ? { alter: false, force: false }  // Safe for production
-      : { alter: true, force: false };  // Development with schema updates
-    
-    await sequelize.sync(syncOptions);
-    console.log('✅ Database synchronized');
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
-    
-    // Provide helpful error messages
-    if (error.original) {
-      console.error('💡 Database error details:', error.original.message);
-    }
-    
-    if (config.DATABASE_DIALECT === 'postgres') {
-      console.error('💡 PostgreSQL connection tips:');
-      console.error('   - Check if DATABASE_URL is correct');
-      console.error('   - Verify database server is running');
-      console.error('   - Check firewall settings');
-      console.error('   - Ensure database exists and user has permissions');
-    } else {
-      console.error('💡 SQLite connection tips:');
-      console.error('   - Check file permissions for database file');
-      console.error('   - Ensure sufficient disk space');
-      console.error('   - Verify the path is accessible');
-    }
-    
-    process.exit(1);
   }
 };
 
-module.exports = { sequelize, connectDB };
+// Add health check method
+const healthCheck = async () => {
+  try {
+    await sequelize.authenticate();
+    const { Bot } = require('../models');
+    const botCount = await Bot.count();
+    return {
+      healthy: true,
+      bots: botCount,
+      dialect: config.DATABASE_DIALECT
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      error: error.message,
+      dialect: config.DATABASE_DIALECT
+    };
+  }
+};
+
+module.exports = { sequelize, connectDB, healthCheck };

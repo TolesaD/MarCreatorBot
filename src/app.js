@@ -1,9 +1,7 @@
 ﻿// Production optimizations
 if (process.env.NODE_ENV === 'production') {
-  // Increase event listeners for production
   require('events').EventEmitter.defaultMaxListeners = 20;
   
-  // Global error handlers
   process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
   });
@@ -16,20 +14,19 @@ if (process.env.NODE_ENV === 'production') {
 
 const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/environment');
-const { connectDB } = require('../database/db');
+const { connectDB, healthCheck } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
+const { ensureDatabase } = require('./scripts/ensureDatabase');
 
 // Import handlers
-const { startHandler, helpHandler, featuresHandler, defaultHandler } = require('./handlers/startHandler');
+const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 
 class MetaBotCreator {
   constructor() {
-    // Validate bot token first
     if (!config.BOT_TOKEN || config.BOT_TOKEN === 'NOT SET') {
       console.error('❌ BOT_TOKEN is not set or invalid');
-      console.log('💡 Please check your .env file and ensure BOT_TOKEN is set correctly');
       process.exit(1);
     }
     
@@ -41,9 +38,7 @@ class MetaBotCreator {
   setupHandlers() {
     console.log('🔄 Setting up bot handlers...');
     
-    // Clear any existing middleware
     this.bot.use(async (ctx, next) => {
-      // Add main bot identifier
       ctx.isMainBot = true;
       return next();
     });
@@ -56,25 +51,23 @@ class MetaBotCreator {
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
     
-    // Main commands - ONLY creation and listing
+    // Main commands
     this.bot.command('createbot', createBotHandler);
     this.bot.command('mybots', myBotsHandler);
     this.bot.command('cancel', cancelCreationHandler);
     
-    // Text message handling - ONLY for main bot functions
+    // Text message handling
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
       
       console.log(`📨 Received text from ${userId}: ${messageText}`);
       
-      // Handle cancel first
       if (messageText === '🚫 Cancel Creation') {
         await cancelCreationHandler(ctx);
         return;
       }
       
-      // Handle creation sessions
       if (isInCreationSession(userId)) {
         const step = getCreationStep(userId);
         console.log(`🔄 User ${userId} in creation session, step: ${step}`);
@@ -86,18 +79,12 @@ class MetaBotCreator {
         return;
       }
       
-      // All other messages show main menu
-      console.log(`🔄 User ${userId} - showing main menu`);
       await startHandler(ctx);
     });
     
-    // Setup main bot callback handlers only
     this.setupCallbackHandlers();
-    
-    // Register admin callbacks
     this.registerAdminCallbacks();
     
-    // Error handling
     this.bot.catch((err, ctx) => {
       console.error('❌ Main bot error:', err);
       try {
@@ -113,7 +100,6 @@ class MetaBotCreator {
   setupCallbackHandlers() {
     console.log('🔄 Setting up main bot callback handlers...');
     
-    // ========== MAIN BOT NAVIGATION ONLY ==========
     this.bot.action('start', async (ctx) => {
       await ctx.answerCbQuery();
       await startHandler(ctx);
@@ -149,7 +135,6 @@ class MetaBotCreator {
       await this.termsHandler(ctx);
     });
     
-    // ========== IGNORE MINI-BOT CALLBACKS ==========
     this.bot.action(/^mini_.+/, async (ctx) => {
       await ctx.answerCbQuery('⚠️ Please use this in your mini-bot');
       await ctx.reply('🔧 This feature is available in your mini-bots. Go to any of your created bots and use /dashboard there.');
@@ -170,7 +155,6 @@ class MetaBotCreator {
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
     
-    // ========== DEFAULT CATCH-ALL ==========
     this.bot.action(/.+/, async (ctx) => {
       await ctx.answerCbQuery();
       await startHandler(ctx);
@@ -179,7 +163,6 @@ class MetaBotCreator {
     console.log('✅ Main bot callback handlers setup complete');
   }
   
-  // Privacy Policy Handler
   privacyHandler = async (ctx) => {
     try {
       const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
@@ -229,7 +212,6 @@ class MetaBotCreator {
     }
   }
 
-  // Terms of Service Handler
   termsHandler = async (ctx) => {
     try {
       const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
@@ -303,7 +285,6 @@ class MetaBotCreator {
   registerAdminCallbacks() {
     console.log('🔄 Registering admin callbacks...');
     
-    // Bot management callbacks
     this.bot.action(/bot_dashboard_(.+)/, async (ctx) => {
       const botId = ctx.match[1];
       const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
@@ -335,49 +316,74 @@ class MetaBotCreator {
     try {
       console.log('🔄 Initializing MetaBot Creator...');
       
-      // Connect to database FIRST
+      // Step 1: Connect to database with retries
       console.log('🗄️ Connecting to database...');
-      await connectDB();
-      console.log('✅ Database connected');
+      const dbConnected = await connectDB();
       
-      // Wait a bit for database to be fully ready
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!dbConnected) {
+        console.error('❌ Database connection failed, but continuing...');
+        // We'll try to initialize mini-bots anyway in case it's a temporary issue
+      }
       
-      // Initialize all active mini-bots with proper error handling
+      // Step 2: Ensure database is properly set up
+      console.log('🔄 Ensuring database setup...');
+      await ensureDatabase();
+      
+      // Step 3: Wait for database to be fully ready
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Step 4: Initialize mini-bots with robust error handling
       console.log('🤖 Initializing mini-bots...');
-      
-      // Use a more robust initialization approach
-      const initializeMiniBots = async () => {
-        try {
-          console.log('🔄 Starting mini-bot initialization process...');
-          const successCount = await MiniBotManager.initializeAllBots();
-          
-          if (successCount > 0) {
-            console.log(`✅ ${successCount} mini-bots initialized successfully`);
-          } else {
-            console.log('ℹ️ No active mini-bots found to initialize');
-          }
-          
-          // Schedule health check
-          setTimeout(() => {
-            console.log('🔍 Running post-initialization health check...');
-            MiniBotManager.healthCheck();
-          }, 10000);
-          
-        } catch (error) {
-          console.error('❌ Mini-bot initialization error:', error);
-          // Retry initialization after delay
-          setTimeout(initializeMiniBots, 10000);
-        }
-      };
-      
-      // Start initialization with delay to ensure database is ready
-      setTimeout(initializeMiniBots, 3000);
+      await this.initializeMiniBotsWithRetry();
       
       console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
       console.error('❌ Initialization failed:', error);
-      process.exit(1);
+      // Don't exit, try to continue
+    }
+  }
+  
+  async initializeMiniBotsWithRetry(maxRetries = 3) {
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+      try {
+        console.log(`🔄 Mini-bot initialization attempt ${retries + 1}/${maxRetries}`);
+        
+        const successCount = await MiniBotManager.initializeAllBots();
+        
+        if (successCount > 0) {
+          console.log(`✅ ${successCount} mini-bots initialized successfully`);
+          return;
+        } else {
+          console.log('ℹ️ No active mini-bots found to initialize');
+          
+          // Check if this might be a database timing issue
+          const { Bot } = require('../models');
+          const activeBots = await Bot.findAll({ where: { is_active: true } });
+          console.log(`📊 Database shows ${activeBots.length} active bots`);
+          
+          if (activeBots.length > 0) {
+            console.log('⚠️ Database has active bots but MiniBotManager found 0 - retrying...');
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          // No active bots, this is normal
+          return;
+        }
+      } catch (error) {
+        console.error(`❌ Mini-bot initialization attempt ${retries + 1} failed:`, error);
+        retries++;
+        
+        if (retries < maxRetries) {
+          console.log(`🔄 Retrying in 3 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } else {
+          console.error('💥 All mini-bot initialization attempts failed');
+        }
+      }
     }
   }
   
@@ -397,13 +403,26 @@ class MetaBotCreator {
         console.log('========================================');
         
         // Schedule periodic health checks
-        setInterval(() => {
+        setInterval(async () => {
+          console.log('🏥 Running scheduled health check...');
+          const health = await healthCheck();
+          console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots} bots`);
+          
           MiniBotManager.healthCheck();
         }, 300000); // Every 5 minutes
+        
+        // Initial health check after 30 seconds
+        setTimeout(async () => {
+          console.log('🏥 Running initial health check...');
+          const health = await healthCheck();
+          console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots} bots`);
+          
+          MiniBotManager.healthCheck();
+        }, 30000);
       })
       .catch(error => {
         console.error('❌ Failed to start main bot:', error);
-        console.log('💡 Check your BOT_TOKEN in .env file');
+        console.log('💡 Check your BOT_TOKEN in Railway variables');
         process.exit(1);
       });
     
@@ -415,13 +434,11 @@ class MetaBotCreator {
   async shutdown() {
     console.log('\n🛑 Shutting down gracefully...');
     
-    // Stop main bot
     if (this.bot) {
       await this.bot.stop();
       console.log('✅ Main bot stopped');
     }
     
-    // Stop all mini-bots with proper cleanup
     const activeBots = Array.from(MiniBotManager.activeBots.keys());
     console.log(`🔄 Stopping ${activeBots.length} mini-bots...`);
     
@@ -434,9 +451,7 @@ class MetaBotCreator {
       }
     }
     
-    // Clear the active bots map
     MiniBotManager.activeBots.clear();
-    
     console.log('👋 All bots stopped successfully');
     process.exit(0);
   }
@@ -447,13 +462,8 @@ async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
     
-    // Create app instance
     const app = new MetaBotCreator();
-    
-    // Initialize everything
     await app.initialize();
-    
-    // Start the bot
     app.start();
     
     return app;
@@ -463,7 +473,6 @@ async function startApplication() {
   }
 }
 
-// Start the application
 startApplication();
 
 module.exports = MetaBotCreator;
