@@ -14,9 +14,8 @@ if (process.env.NODE_ENV === 'production') {
 
 const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/environment');
-const { connectDB, healthCheck } = require('../database/db');
+const { connectDB, healthCheck, getDatabaseInfo } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
-const { ensureDatabase } = require('./scripts/ensureDatabase');
 
 // Import handlers
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
@@ -27,6 +26,7 @@ class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN || config.BOT_TOKEN === 'NOT SET') {
       console.error('❌ BOT_TOKEN is not set or invalid');
+      console.error('💡 Check your Railway environment variables');
       process.exit(1);
     }
     
@@ -61,8 +61,6 @@ class MetaBotCreator {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
       
-      console.log(`📨 Received text from ${userId}: ${messageText}`);
-      
       if (messageText === '🚫 Cancel Creation') {
         await cancelCreationHandler(ctx);
         return;
@@ -70,7 +68,6 @@ class MetaBotCreator {
       
       if (isInCreationSession(userId)) {
         const step = getCreationStep(userId);
-        console.log(`🔄 User ${userId} in creation session, step: ${step}`);
         if (step === 'awaiting_token') {
           await handleTokenInput(ctx);
         } else if (step === 'awaiting_name') {
@@ -316,74 +313,67 @@ class MetaBotCreator {
     try {
       console.log('🔄 Initializing MetaBot Creator...');
       
-      // Step 1: Connect to database with retries
-      console.log('🗄️ Connecting to database...');
+      // Step 1: Connect to PostgreSQL database
+      console.log('🗄️ Connecting to PostgreSQL database...');
       const dbConnected = await connectDB();
       
       if (!dbConnected) {
-        console.error('❌ Database connection failed, but continuing...');
-        // We'll try to initialize mini-bots anyway in case it's a temporary issue
+        console.error('❌ Failed to connect to PostgreSQL database');
+        if (config.NODE_ENV === 'production') {
+          console.error('💥 Cannot continue without database in production');
+          process.exit(1);
+        }
       }
       
-      // Step 2: Ensure database is properly set up
-      console.log('🔄 Ensuring database setup...');
-      await ensureDatabase();
+      // Step 2: Get database info for debugging
+      try {
+        const dbInfo = await getDatabaseInfo();
+        console.log('📊 Database Info:', dbInfo);
+      } catch (error) {
+        console.log('⚠️  Could not get database info:', error.message);
+      }
       
       // Step 3: Wait for database to be fully ready
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('🔄 Waiting for database to be ready...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Step 4: Initialize mini-bots with robust error handling
+      // Step 4: Initialize mini-bots
       console.log('🤖 Initializing mini-bots...');
-      await this.initializeMiniBotsWithRetry();
+      await this.initializeMiniBots();
       
       console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
       console.error('❌ Initialization failed:', error);
-      // Don't exit, try to continue
+      if (config.NODE_ENV === 'production') {
+        console.error('💥 Critical initialization error in production');
+        process.exit(1);
+      }
     }
   }
   
-  async initializeMiniBotsWithRetry(maxRetries = 3) {
-    let retries = 0;
-    
-    while (retries < maxRetries) {
-      try {
-        console.log(`🔄 Mini-bot initialization attempt ${retries + 1}/${maxRetries}`);
-        
-        const successCount = await MiniBotManager.initializeAllBots();
-        
-        if (successCount > 0) {
-          console.log(`✅ ${successCount} mini-bots initialized successfully`);
-          return;
-        } else {
-          console.log('ℹ️ No active mini-bots found to initialize');
-          
-          // Check if this might be a database timing issue
-          const { Bot } = require('../models');
-          const activeBots = await Bot.findAll({ where: { is_active: true } });
-          console.log(`📊 Database shows ${activeBots.length} active bots`);
-          
-          if (activeBots.length > 0) {
-            console.log('⚠️ Database has active bots but MiniBotManager found 0 - retrying...');
-            retries++;
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            continue;
-          }
-          
-          // No active bots, this is normal
-          return;
-        }
-      } catch (error) {
-        console.error(`❌ Mini-bot initialization attempt ${retries + 1} failed:`, error);
-        retries++;
-        
-        if (retries < maxRetries) {
-          console.log(`🔄 Retrying in 3 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        } else {
-          console.error('💥 All mini-bot initialization attempts failed');
-        }
+  async initializeMiniBots() {
+    try {
+      console.log('🔄 Starting mini-bot initialization...');
+      
+      const { Bot } = require('../models');
+      const activeBots = await Bot.findAll({ where: { is_active: true } });
+      console.log(`📊 Found ${activeBots.length} active bots in database`);
+      
+      for (const bot of activeBots) {
+        console.log(`🤖 Active Bot: ${bot.bot_name} (ID: ${bot.bot_id})`);
       }
+      
+      const successCount = await MiniBotManager.initializeAllBots();
+      
+      if (successCount > 0) {
+        console.log(`✅ ${successCount} mini-bots initialized successfully`);
+      } else {
+        console.log('ℹ️ No active mini-bots found to initialize');
+      }
+      
+    } catch (error) {
+      console.error('❌ Mini-bot initialization failed:', error);
+      throw error;
     }
   }
   
@@ -406,7 +396,7 @@ class MetaBotCreator {
         setInterval(async () => {
           console.log('🏥 Running scheduled health check...');
           const health = await healthCheck();
-          console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots} bots`);
+          console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
           
           MiniBotManager.healthCheck();
         }, 300000); // Every 5 minutes
@@ -415,7 +405,7 @@ class MetaBotCreator {
         setTimeout(async () => {
           console.log('🏥 Running initial health check...');
           const health = await healthCheck();
-          console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots} bots`);
+          console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
           
           MiniBotManager.healthCheck();
         }, 30000);
@@ -461,6 +451,7 @@ class MetaBotCreator {
 async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
+    console.log('🚀 Using PostgreSQL database exclusively');
     
     const app = new MetaBotCreator();
     await app.initialize();

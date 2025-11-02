@@ -10,17 +10,9 @@ const config = {
   
   // ==================== DATABASE CONFIGURATION ====================
   DATABASE_URL: process.env.DATABASE_URL,
-  DATABASE_DIALECT: process.env.DATABASE_DIALECT || 'sqlite',
-  DB_PATH: process.env.DB_PATH || './metabot_creator.db',
+  DATABASE_DIALECT: 'postgres', // Force PostgreSQL
   
-  // PostgreSQL specific (for production)
-  DATABASE_HOST: process.env.DATABASE_HOST,
-  DATABASE_PORT: process.env.DATABASE_PORT || 5432,
-  DATABASE_NAME: process.env.DATABASE_NAME,
-  DATABASE_USER: process.env.DATABASE_USER,
-  DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,
-  
-  // Connection pool settings (PostgreSQL)
+  // Connection pool settings
   DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 20,
   DATABASE_POOL_IDLE: parseInt(process.env.DATABASE_POOL_IDLE) || 30000,
   DATABASE_POOL_ACQUIRE: parseInt(process.env.DATABASE_POOL_ACQUIRE) || 60000,
@@ -88,11 +80,12 @@ const config = {
 // ==================== VALIDATION & POST-PROCESSING ====================
 
 // Validate required environment variables
-const required = ['BOT_TOKEN', 'ENCRYPTION_KEY'];
+const required = ['BOT_TOKEN', 'ENCRYPTION_KEY', 'DATABASE_URL'];
 required.forEach(key => {
   if (!config[key]) {
     console.error(`❌ Missing required environment variable: ${key}`);
     if (config.NODE_ENV === 'production') {
+      console.error(`💡 For Railway, make sure ${key} is set in your project variables`);
       process.exit(1);
     } else {
       console.warn(`⚠️  ${key} is missing but continuing in development mode`);
@@ -100,16 +93,12 @@ required.forEach(key => {
   }
 });
 
-// PostgreSQL URL construction
-if (config.DATABASE_DIALECT === 'postgres' && !config.DATABASE_URL) {
-  if (config.DATABASE_HOST && config.DATABASE_NAME) {
-    config.DATABASE_URL = `postgresql://${config.DATABASE_USER}:${config.DATABASE_PASSWORD}@${config.DATABASE_HOST}:${config.DATABASE_PORT}/${config.DATABASE_NAME}`;
+// Validate DATABASE_URL for PostgreSQL
+if (config.DATABASE_URL && !config.DATABASE_URL.includes('postgres')) {
+  console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
+  if (config.NODE_ENV === 'production') {
+    process.exit(1);
   }
-}
-
-// SQLite URL normalization
-if (config.DATABASE_DIALECT === 'sqlite' && config.DATABASE_URL) {
-  config.DATABASE_URL = config.DATABASE_URL.replace(/^file:/, '');
 }
 
 // Webhook URL validation
@@ -134,7 +123,7 @@ console.log('   NODE_ENV:', config.NODE_ENV);
 console.log('   PORT:', config.PORT);
 console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-4) : 'NOT SET');
 console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
-console.log('   DATABASE:', config.DATABASE_DIALECT.toUpperCase());
-console.log('   DATABASE_URL:', config.DATABASE_DIALECT === 'sqlite' ? config.DB_PATH : '***postgres***');
+console.log('   DATABASE: POSTGRESQL');
+console.log('   DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
 
 module.exports = config;
