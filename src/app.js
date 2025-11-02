@@ -335,52 +335,44 @@ class MetaBotCreator {
     try {
       console.log('🔄 Initializing MetaBot Creator...');
       
-      // Connect to database
+      // Connect to database FIRST
       console.log('🗄️ Connecting to database...');
       await connectDB();
       console.log('✅ Database connected');
       
-      // Clear any existing mini-bots first (CRITICAL FIX)
-      console.log('🔄 Cleaning up any existing mini-bot instances...');
-      const activeBots = Array.from(MiniBotManager.activeBots.keys());
-      for (const botId of activeBots) {
-        await MiniBotManager.stopBot(botId);
-      }
-      console.log(`✅ Cleared ${activeBots.length} existing bot instances`);
+      // Wait a bit for database to be fully ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Initialize all active mini-bots (with proper error handling)
+      // Initialize all active mini-bots with proper error handling
       console.log('🤖 Initializing mini-bots...');
       
-      // Use setTimeout with proper cleanup to prevent duplicates
-      let initializationStarted = false;
-      
+      // Use a more robust initialization approach
       const initializeMiniBots = async () => {
-        if (initializationStarted) {
-          console.log('⚠️ Mini-bot initialization already in progress, skipping...');
-          return;
-        }
-        
-        initializationStarted = true;
         try {
+          console.log('🔄 Starting mini-bot initialization process...');
           const successCount = await MiniBotManager.initializeAllBots();
+          
           if (successCount > 0) {
             console.log(`✅ ${successCount} mini-bots initialized successfully`);
           } else {
             console.log('ℹ️ No active mini-bots found to initialize');
           }
+          
+          // Schedule health check
+          setTimeout(() => {
+            console.log('🔍 Running post-initialization health check...');
+            MiniBotManager.healthCheck();
+          }, 10000);
+          
         } catch (error) {
           console.error('❌ Mini-bot initialization error:', error);
+          // Retry initialization after delay
+          setTimeout(initializeMiniBots, 10000);
         }
       };
       
-      // Delay initialization to ensure main bot is stable
-      setTimeout(initializeMiniBots, 5000);
-      
-      // Debug: Check for duplicates after initialization
-      setTimeout(() => {
-        console.log('🔍 DEBUG: Checking for duplicate bots...');
-        MiniBotManager.debugActiveBots();
-      }, 8000);
+      // Start initialization with delay to ensure database is ready
+      setTimeout(initializeMiniBots, 3000);
       
       console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
@@ -403,6 +395,11 @@ class MetaBotCreator {
         console.log('📋 Use /mybots to view your bots');
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
+        
+        // Schedule periodic health checks
+        setInterval(() => {
+          MiniBotManager.healthCheck();
+        }, 300000); // Every 5 minutes
       })
       .catch(error => {
         console.error('❌ Failed to start main bot:', error);

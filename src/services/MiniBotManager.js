@@ -7,7 +7,9 @@ class MiniBotManager {
     this.broadcastSessions = new Map();
     this.replySessions = new Map();
     this.adminSessions = new Map();
-    this.messageFlowSessions = new Map(); // For real-time message flow
+    this.messageFlowSessions = new Map();
+    this.initializationPromise = null; // Track initialization state
+    this.isInitialized = false; // Add initialization flag
   }
   
   // Add this helper method for deleting messages after delay
@@ -27,38 +29,74 @@ class MiniBotManager {
   }
   
   async initializeAllBots() {
+    // Prevent multiple simultaneous initializations
+    if (this.initializationPromise) {
+      console.log('🔄 Initialization already in progress, waiting...');
+      return this.initializationPromise;
+    }
+    
+    this.initializationPromise = this._initializeAllBots();
+    const result = await this.initializationPromise;
+    this.initializationPromise = null;
+    return result;
+  }
+  
+  async _initializeAllBots() {
     try {
       console.log('🔄 Initializing all active mini-bots...');
+      
+      // Clear existing bots first to prevent duplicates
+      await this.clearAllBots();
+      
       const activeBots = await Bot.findAll({ where: { is_active: true } });
       
       console.log(`📊 Found ${activeBots.length} active bots to initialize`);
       
       let successCount = 0;
-      let skippedCount = 0;
+      let failedCount = 0;
       
+      // Initialize bots sequentially to avoid race conditions
       for (const botRecord of activeBots) {
         try {
-          // CRITICAL FIX: Check if already active before initializing
-          if (this.activeBots.has(botRecord.id)) {
-            console.log(`⏭️ Skipping already active bot: ${botRecord.bot_name}`);
-            skippedCount++;
-            continue;
+          const success = await this.initializeBot(botRecord);
+          if (success) {
+            successCount++;
+          } else {
+            failedCount++;
           }
           
-          const success = await this.initializeBot(botRecord);
-          if (success) successCount++;
+          // Small delay between bot initializations
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
           console.error(`Failed to initialize bot ${botRecord.bot_name}:`, error.message);
+          failedCount++;
         }
       }
       
-      console.log(`✅ ${successCount}/${activeBots.length} mini-bots initialized successfully (${skippedCount} skipped as already active)`);
+      console.log(`✅ ${successCount}/${activeBots.length} mini-bots initialized successfully (${failedCount} failed)`);
+      this.isInitialized = true;
       this.debugActiveBots();
       return successCount;
     } catch (error) {
       console.error('Error initializing all bots:', error);
+      this.isInitialized = false;
       return 0;
     }
+  }
+  
+  async clearAllBots() {
+    console.log('🔄 Clearing all existing bot instances...');
+    const botIds = Array.from(this.activeBots.keys());
+    
+    for (const botId of botIds) {
+      try {
+        await this.stopBot(botId);
+      } catch (error) {
+        console.error(`Error stopping bot ${botId}:`, error);
+      }
+    }
+    
+    console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
   async initializeBot(botRecord) {
@@ -67,14 +105,7 @@ class MiniBotManager {
       
       // CRITICAL FIX: Check if bot is already active with this database ID
       if (this.activeBots.has(botRecord.id)) {
-        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, skipping...`);
-        const existingBot = this.activeBots.get(botRecord.id);
-        return !!existingBot;
-      }
-      
-      // Stop existing instance if any (shouldn't happen with above check, but safety)
-      if (this.activeBots.has(botRecord.id)) {
-        console.log(`🛑 Stopping existing instance for bot ID: ${botRecord.id}`);
+        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
         await this.stopBot(botRecord.id);
       }
       
@@ -108,25 +139,22 @@ class MiniBotManager {
       console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
       
       // Launch the bot (this runs in background)
-      bot.launch({
+      await bot.launch({
         dropPendingUpdates: true,
         allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-      }).then(() => {
-        console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
-      }).catch(error => {
-        console.error(`❌ Bot launch failed: ${botRecord.bot_name}`, error.message);
-        // Remove from active bots if launch fails
-        this.activeBots.delete(botRecord.id);
       });
+      
+      console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
       
       // Set bot commands for menu/sidebar
       await this.setBotCommands(bot, token);
       
-      // Store with database ID as key - CRITICAL: Do this BEFORE await
+      // Store with database ID as key - CRITICAL: Do this AFTER successful launch
       this.activeBots.set(botRecord.id, { 
         instance: bot, 
         record: botRecord,
-        token: token
+        token: token,
+        launchedAt: new Date()
       });
       
       console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
@@ -205,9 +233,10 @@ class MiniBotManager {
   debugActiveBots = () => {
     console.log('🐛 DEBUG: Active Bots Status');
     console.log(`📊 Total active bots: ${this.activeBots.size}`);
+    console.log(`🏁 Initialization status: ${this.isInitialized ? 'COMPLETE' : 'PENDING'}`);
     
     for (const [dbId, botData] of this.activeBots.entries()) {
-      console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Bot ID: ${botData.record.bot_id}`);
+      console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Bot ID: ${botData.record.bot_id} | Launched: ${botData.launchedAt}`);
     }
     
     if (this.activeBots.size === 0) {
@@ -1228,12 +1257,30 @@ processAddAdmin = async (ctx, botId, input) => {
     try {
       const botData = this.activeBots.get(botId);
       if (botData && botData.instance) {
+        console.log(`🛑 Stopping bot ${botId}...`);
         await botData.instance.stop();
         this.activeBots.delete(botId);
+        console.log(`✅ Bot ${botId} stopped successfully`);
       }
     } catch (error) {
       console.error(`Error stopping bot ${botId}:`, error);
     }
+  }
+
+  // NEW: Health check method to verify all bots are running
+  healthCheck = () => {
+    console.log('🏥 Mini-bot Manager Health Check:');
+    console.log(`📊 Active bots: ${this.activeBots.size}`);
+    console.log(`🏁 Initialized: ${this.isInitialized}`);
+    console.log(`🔄 Initialization in progress: ${!!this.initializationPromise}`);
+    
+    this.debugActiveBots();
+    
+    return {
+      isHealthy: this.isInitialized && !this.initializationPromise,
+      activeBots: this.activeBots.size,
+      status: this.isInitialized ? 'READY' : 'INITIALIZING'
+    };
   }
 }
 

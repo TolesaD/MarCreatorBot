@@ -6,11 +6,8 @@ class BotService {
     try {
       const bot = await Bot.create(botData);
       
-      // Initialize the mini-bot only if it's active
-      let initialized = false;
-      if (bot.is_active) {
-        initialized = await MiniBotManager.initializeBot(bot);
-      }
+      // Initialize the mini-bot
+      const initialized = await MiniBotManager.initializeBot(bot);
       
       return {
         success: true,
@@ -63,17 +60,11 @@ class BotService {
         return { success: false, error: 'Only owner can activate bot' };
       }
       
-      // Update bot status first
+      // Update bot status
       await bot.update({ is_active: true });
       
-      // Initialize the mini-bot only if not already active
-      let initialized = false;
-      if (!MiniBotManager.activeBots.has(bot.id)) {
-        initialized = await MiniBotManager.initializeBot(bot);
-      } else {
-        console.log(`ℹ️ Bot ${bot.bot_name} is already active, skipping initialization`);
-        initialized = true;
-      }
+      // Initialize the mini-bot
+      const initialized = await MiniBotManager.initializeBot(bot);
       
       return { 
         success: true, 
