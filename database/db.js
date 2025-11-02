@@ -6,21 +6,20 @@ const path = require('path');
 let sequelize;
 
 console.log(`🗄️ Database configuration: ${config.DATABASE_DIALECT}`);
-console.log(`🔍 DATABASE_URL available: ${!!config.DATABASE_URL}`);
 
-if (config.DATABASE_URL) {
+if (config.DATABASE_DIALECT === 'postgres' && config.DATABASE_URL) {
+  // PostgreSQL configuration for production
   console.log('🔄 Configuring PostgreSQL database...');
-  console.log('✅ DATABASE_URL found - using PostgreSQL (data will persist)');
   
   sequelize = new Sequelize(config.DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    dialectOptions: {
-      ssl: config.NODE_ENV === 'production' ? {
+    dialectOptions: config.NODE_ENV === 'production' ? {
+      ssl: {
         require: true,
         rejectUnauthorized: false
-      } : false
-    },
+      }
+    } : {},
     logging: config.LOG_LEVEL === 'debug' ? console.log : false,
     pool: {
       max: config.DATABASE_POOL_MAX || 20,
@@ -33,13 +32,10 @@ if (config.DATABASE_URL) {
     }
   });
 } else {
-  // SQLite fallback with WARNING
-  console.log('❌ DATABASE_URL not set - falling back to SQLite');
-  console.log('🚨 WARNING: SQLite data will NOT persist across Railway deployments!');
-  console.log('💡 Solution: Add PostgreSQL database in Railway Dashboard');
-  console.log('   Railway → New → Database → PostgreSQL');
+  // SQLite configuration for development (with PostgreSQL compatibility)
+  console.log('🔄 Configuring SQLite database (PostgreSQL compatible)...');
   
-  let dbPath = './metabot_creator.db';
+  let dbPath = config.DATABASE_URL || './metabot_creator.db';
   if (dbPath.startsWith('./')) {
     dbPath = path.join(process.cwd(), dbPath);
   }
@@ -56,11 +52,23 @@ if (config.DATABASE_URL) {
     dialect: 'sqlite',
     storage: dbPath,
     logging: config.LOG_LEVEL === 'debug' ? console.log : false,
+    // SQLite settings for better PostgreSQL compatibility
+    dialectOptions: {
+      // Enable foreign keys and other PostgreSQL-like features
+    },
+    // Use PostgreSQL-compatible settings
+    define: {
+      timestamps: true, // Use createdAt, updatedAt (PostgreSQL style)
+      underscored: false, // Use camelCase (PostgreSQL style)
+    },
     pool: {
       max: 5,
       min: 0,
       acquire: 30000,
       idle: 10000
+    },
+    retry: {
+      max: 3
     }
   });
 }
@@ -69,17 +77,20 @@ const connectDB = async () => {
   try {
     console.log('🔄 Connecting to database...');
     await sequelize.authenticate();
+    console.log('✅ Database connected successfully');
     
-    if (process.env.DATABASE_URL) {  // Use process.env.DATABASE_URL here too
-      console.log('✅ PostgreSQL database connected successfully');
-      console.log('✅ Your mini-bots will persist across deployments');
-    } else {
-      console.log('✅ SQLite database connected');
-      console.log('🚨 WARNING: Mini-bots will be LOST on next deployment!');
+    // Enable PostgreSQL-compatible features for SQLite
+    if (config.DATABASE_DIALECT === 'sqlite') {
+      await sequelize.query('PRAGMA foreign_keys = ON');
+      await sequelize.query('PRAGMA journal_mode = WAL');
+      console.log('✅ SQLite optimized for PostgreSQL compatibility');
     }
     
-    // Sync all models
-    const syncOptions = { alter: true, force: false };
+    // Sync all models with safe approach
+    const syncOptions = config.NODE_ENV === 'production' 
+      ? { alter: false, force: false }  // Safe for production
+      : { alter: true, force: false };  // Development with schema updates
+    
     await sequelize.sync(syncOptions);
     console.log('✅ Database synchronized');
     
@@ -87,12 +98,22 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
     
-    if (process.env.DATABASE_URL) {  // Use process.env.DATABASE_URL here too
-      console.error('💡 PostgreSQL connection failed:');
-      console.error('   - Check DATABASE_URL format');
-      console.error('   - Verify database is accessible');
+    // Provide helpful error messages
+    if (error.original) {
+      console.error('💡 Database error details:', error.original.message);
+    }
+    
+    if (config.DATABASE_DIALECT === 'postgres') {
+      console.error('💡 PostgreSQL connection tips:');
+      console.error('   - Check if DATABASE_URL is correct');
+      console.error('   - Verify database server is running');
+      console.error('   - Check firewall settings');
+      console.error('   - Ensure database exists and user has permissions');
     } else {
-      console.error('💡 SQLite connection failed');
+      console.error('💡 SQLite connection tips:');
+      console.error('   - Check file permissions for database file');
+      console.error('   - Ensure sufficient disk space');
+      console.error('   - Verify the path is accessible');
     }
     
     process.exit(1);
