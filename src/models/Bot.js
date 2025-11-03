@@ -363,4 +363,41 @@ Bot.prototype.toSafeFormat = function() {
   };
 };
 
+// Add this static method to Bot model
+Bot.diagnoseEncryption = async function() {
+  const { diagnoseEncryptionKey, isEncryptionWorking } = require('../utils/encryption');
+  
+  console.log('🔍 Running encryption diagnostics...');
+  
+  // Test encryption key
+  const keyDiagnosis = diagnoseEncryptionKey();
+  console.log('🔑 Encryption Key Diagnosis:', keyDiagnosis);
+  
+  // Test encryption system
+  const encryptionWorking = isEncryptionWorking();
+  console.log('🔐 Encryption System Working:', encryptionWorking);
+  
+  // Test existing bot tokens
+  const activeBots = await this.findAll({ where: { is_active: true } });
+  console.log(`🤖 Testing ${activeBots.length} active bots...`);
+  
+  const results = [];
+  for (const bot of activeBots) {
+    const tokenTest = bot.testTokenDecryption();
+    results.push({
+      bot_name: bot.bot_name,
+      bot_id: bot.bot_id,
+      token_test: tokenTest
+    });
+    
+    console.log(`   ${bot.bot_name}: ${tokenTest.success ? '✅' : '❌'} ${tokenTest.message}`);
+  }
+  
+  return {
+    key_diagnosis: keyDiagnosis,
+    encryption_system: encryptionWorking,
+    bot_tests: results
+  };
+};
+
 module.exports = Bot;

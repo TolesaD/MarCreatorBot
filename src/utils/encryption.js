@@ -5,31 +5,46 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
-// CRITICAL FIX: Better key handling with validation
+// CRITICAL FIX: Handle Base64, hex, and string encryption keys
 function getEncryptionKey() {
   if (!config.ENCRYPTION_KEY) {
     console.error('❌ ENCRYPTION_KEY is not set in environment');
     throw new Error('ENCRYPTION_KEY is required but not set');
   }
   
-  // CRITICAL: Handle different key formats
+  console.log(`🔑 Processing ENCRYPTION_KEY (length: ${config.ENCRYPTION_KEY.length})`);
+  
   let keyBuffer;
   
+  // CRITICAL: Detect and handle different key formats
   if (config.ENCRYPTION_KEY.length === 64 && /^[0-9a-fA-F]+$/.test(config.ENCRYPTION_KEY)) {
-    // Key is already 32 bytes in hex format
+    // Key is 32 bytes in hex format (64 hex characters)
     keyBuffer = Buffer.from(config.ENCRYPTION_KEY, 'hex');
-    console.log('🔑 Using hex encryption key');
+    console.log('🔑 Using hex encryption key (32 bytes)');
+    
+  } else if (config.ENCRYPTION_KEY.length === 44 && config.ENCRYPTION_KEY.includes('=')) {
+    // Key is 32 bytes in Base64 format (44 characters with padding)
+    try {
+      keyBuffer = Buffer.from(config.ENCRYPTION_KEY, 'base64');
+      console.log('🔑 Using Base64 encryption key (32 bytes)');
+    } catch (error) {
+      console.error('❌ Invalid Base64 encryption key:', error.message);
+      throw new Error('Invalid Base64 encryption key format');
+    }
+    
   } else {
     // Key is a string, hash it to get 32 bytes
+    console.log('🔑 Using string encryption key (hashing to 32 bytes)');
     keyBuffer = crypto.createHash('sha256').update(config.ENCRYPTION_KEY).digest();
-    console.log('🔑 Using hashed string encryption key');
   }
   
   // Validate key length
   if (keyBuffer.length !== 32) {
-    throw new Error(`Invalid key length: ${keyBuffer.length} bytes (expected 32)`);
+    console.error(`❌ Invalid key length: ${keyBuffer.length} bytes (expected 32)`);
+    throw new Error(`Invalid encryption key length: ${keyBuffer.length} bytes`);
   }
   
+  console.log(`✅ Encryption key ready: ${keyBuffer.length} bytes`);
   return keyBuffer;
 }
 
@@ -53,7 +68,7 @@ function encrypt(text) {
     // Format: iv_hex:authTag_hex:encrypted_hex
     const result = `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
     
-    console.log(`🔐 Encryption successful. Original: ${text.substring(0, 10)}... → Encrypted: ${result.substring(0, 20)}...`);
+    console.log(`🔐 Encryption successful. Original: ${text.substring(0, 10)}...`);
     return result;
     
   } catch (error) {
@@ -133,9 +148,34 @@ function isEncryptionWorking() {
   }
 }
 
+// NEW: Method to test the current ENCRYPTION_KEY format
+function diagnoseEncryptionKey() {
+  const key = config.ENCRYPTION_KEY;
+  if (!key) {
+    return { valid: false, error: 'ENCRYPTION_KEY is not set' };
+  }
+  
+  console.log(`🔍 Diagnosing ENCRYPTION_KEY (length: ${key.length})`);
+  
+  try {
+    if (key.length === 64 && /^[0-9a-fA-F]+$/.test(key)) {
+      return { valid: true, format: 'hex', length: 32 };
+    } else if (key.length === 44 && key.includes('=')) {
+      const keyBuffer = Buffer.from(key, 'base64');
+      return { valid: keyBuffer.length === 32, format: 'base64', length: keyBuffer.length };
+    } else {
+      const keyBuffer = crypto.createHash('sha256').update(key).digest();
+      return { valid: true, format: 'string', length: keyBuffer.length };
+    }
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
 module.exports = { 
   encrypt, 
   decrypt, 
   isEncryptionWorking,
-  getEncryptionKey 
+  getEncryptionKey,
+  diagnoseEncryptionKey 
 };
