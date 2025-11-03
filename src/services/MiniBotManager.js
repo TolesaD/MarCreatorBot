@@ -8,18 +8,18 @@ class MiniBotManager {
     this.replySessions = new Map();
     this.adminSessions = new Map();
     this.messageFlowSessions = new Map();
-    this.initializationPromise = null; // Track initialization state
-    this.isInitialized = false; // Add initialization flag
+    this.initializationPromise = null;
+    this.isInitialized = false;
+    this.initializationAttempts = 0;
+    this.maxInitializationAttempts = 5;
   }
   
-  // Add this helper method for deleting messages after delay
   deleteAfterDelay = async (ctx, messageId, delay = 5000) => {
     try {
       setTimeout(async () => {
         try {
           await ctx.deleteMessage(messageId);
         } catch (error) {
-          // Message might already be deleted or not accessible
           console.log('Message already deleted or not accessible');
         }
       }, delay);
@@ -29,7 +29,6 @@ class MiniBotManager {
   }
   
   async initializeAllBots() {
-    // Prevent multiple simultaneous initializations
     if (this.initializationPromise) {
       console.log('🔄 Initialization already in progress, waiting...');
       return this.initializationPromise;
@@ -43,43 +42,72 @@ class MiniBotManager {
   
   async _initializeAllBots() {
     try {
-      console.log('🔄 Initializing all active mini-bots...');
+      console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
       
-      // Clear existing bots first to prevent duplicates
       await this.clearAllBots();
+      
+      console.log('⏳ Waiting for database to be fully ready...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       const activeBots = await Bot.findAll({ where: { is_active: true } });
       
-      console.log(`📊 Found ${activeBots.length} active bots to initialize`);
+      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+      
+      if (activeBots.length === 0) {
+        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+        this.isInitialized = true;
+        return 0;
+      }
       
       let successCount = 0;
       let failedCount = 0;
       
-      // Initialize bots sequentially to avoid race conditions
       for (const botRecord of activeBots) {
         try {
+          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
           const success = await this.initializeBot(botRecord);
           if (success) {
             successCount++;
+            console.log(`✅ Successfully initialized: ${botRecord.bot_name}`);
           } else {
             failedCount++;
+            console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
           }
           
-          // Small delay between bot initializations
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
-          console.error(`Failed to initialize bot ${botRecord.bot_name}:`, error.message);
+          console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
           failedCount++;
         }
       }
       
-      console.log(`✅ ${successCount}/${activeBots.length} mini-bots initialized successfully (${failedCount} failed)`);
+      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialized successfully (${failedCount} failed)`);
       this.isInitialized = true;
       this.debugActiveBots();
+      
+      if (failedCount > 0 && this.initializationAttempts < this.maxInitializationAttempts) {
+        this.initializationAttempts++;
+        console.log(`🔄 Scheduling retry attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 10 seconds...`);
+        setTimeout(() => {
+          console.log('🔄 Executing scheduled retry for failed bots...');
+          this.initializeAllBots();
+        }, 10000);
+      }
+      
       return successCount;
     } catch (error) {
-      console.error('Error initializing all bots:', error);
+      console.error('💥 CRITICAL: Error initializing all bots:', error);
       this.isInitialized = false;
+      
+      if (this.initializationAttempts < this.maxInitializationAttempts) {
+        this.initializationAttempts++;
+        console.log(`🔄 Scheduling recovery attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 15 seconds...`);
+        setTimeout(() => {
+          console.log('🔄 Executing recovery initialization...');
+          this.initializeAllBots();
+        }, 15000);
+      }
+      
       return 0;
     }
   }
@@ -103,15 +131,20 @@ class MiniBotManager {
     try {
       console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
       
-      // CRITICAL FIX: Check if bot is already active with this database ID
       if (this.activeBots.has(botRecord.id)) {
         console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
         await this.stopBot(botRecord.id);
       }
       
+      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
       const token = botRecord.getDecryptedToken();
       if (!token) {
         console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
+        return false;
+      }
+      
+      if (!this.isValidBotToken(token)) {
+        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
         return false;
       }
       
@@ -125,10 +158,9 @@ class MiniBotManager {
         }
       });
       
-      // Store the database ID in context for easy lookup
       bot.context.metaBotInfo = {
-        mainBotId: botRecord.id, // This is the database ID
-        botId: botRecord.bot_id, // This is the custom bot ID
+        mainBotId: botRecord.id,
+        botId: botRecord.bot_id,
         botName: botRecord.bot_name,
         botUsername: botRecord.bot_username,
         botRecord: botRecord
@@ -138,23 +170,27 @@ class MiniBotManager {
       
       console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
       
-      // Launch the bot (this runs in background)
-      await bot.launch({
+      const launchPromise = bot.launch({
         dropPendingUpdates: true,
         allowedUpdates: ['message', 'callback_query', 'my_chat_member']
       });
       
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Bot launch timeout')), 30000);
+      });
+      
+      await Promise.race([launchPromise, timeoutPromise]);
+      
       console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
       
-      // Set bot commands for menu/sidebar
       await this.setBotCommands(bot, token);
       
-      // Store with database ID as key - CRITICAL: Do this AFTER successful launch
       this.activeBots.set(botRecord.id, { 
         instance: bot, 
         record: botRecord,
         token: token,
-        launchedAt: new Date()
+        launchedAt: new Date(),
+        status: 'active'
       });
       
       console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
@@ -163,10 +199,24 @@ class MiniBotManager {
       return true;
     } catch (error) {
       console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-      // Ensure bot is removed from active bots on error
       this.activeBots.delete(botRecord.id);
       return false;
     }
+  }
+
+  isValidBotToken(token) {
+    if (!token || typeof token !== 'string') {
+      return false;
+    }
+    
+    const tokenPattern = /^\d+:[a-zA-Z0-9_-]+$/;
+    const isValid = tokenPattern.test(token);
+    
+    if (!isValid) {
+      console.error(`❌ Invalid token format: ${token.substring(0, 10)}...`);
+    }
+    
+    return isValid;
   }
   
   async setBotCommands(bot, token) {
@@ -190,7 +240,6 @@ class MiniBotManager {
   setupHandlers = (bot) => {
     console.log('🔄 Setting up handlers for bot...');
     
-    // Use arrow functions for all handlers to maintain 'this' context
     bot.use(async (ctx, next) => {
       ctx.miniBotManager = this;
       return next();
@@ -219,7 +268,6 @@ class MiniBotManager {
     console.log('✅ Bot handlers setup complete');
   }
 
-  // CRITICAL FIX: Get bot instance by database ID
   getBotInstanceByDbId = (dbId) => {
     const botData = this.activeBots.get(parseInt(dbId));
     if (!botData) {
@@ -231,88 +279,37 @@ class MiniBotManager {
   }
 
   debugActiveBots = () => {
-    console.log('🐛 DEBUG: Active Bots Status');
+    console.log('\n🐛 DEBUG: Active Bots Status');
     console.log(`📊 Total active bots: ${this.activeBots.size}`);
     console.log(`🏁 Initialization status: ${this.isInitialized ? 'COMPLETE' : 'PENDING'}`);
-    
-    for (const [dbId, botData] of this.activeBots.entries()) {
-      console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Bot ID: ${botData.record.bot_id} | Launched: ${botData.launchedAt}`);
-    }
+    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
     
     if (this.activeBots.size === 0) {
       console.log('❌ No active bots found in memory!');
+    } else {
+      for (const [dbId, botData] of this.activeBots.entries()) {
+        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
+      }
     }
   }
-  
-  // NEW: Real-time message flow to admins
-  handleViewMessage = async (ctx) => {
-    try {
-      const feedbackId = ctx.match[1];
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      await ctx.answerCbQuery();
-      
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-      if (!isAdmin) {
-        await ctx.reply('❌ Admin access required.');
-        return;
-      }
-      
-      const feedback = await Feedback.findByPk(feedbackId);
-      if (!feedback) {
-        await ctx.reply('❌ Message not found.');
-        return;
-      }
-      
-      const message = `📨 *Message from ${feedback.user_first_name}*\n\n` +
-        `👤 *User:* ${feedback.user_username ? `@${feedback.user_username}` : `User#${feedback.user_id}`}\n` +
-        `🕒 *Time:* ${feedback.created_at.toLocaleString()}\n` +
-        `💬 *Message:* ${feedback.message}\n\n` +
-        `*Quick Actions:*`;
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📩 Reply Now', `quick_reply_${feedback.id}`)],
-        [Markup.button.callback('📋 All Messages', 'mini_messages')],
-        [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
-      ]);
-      
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
-          ...keyboard
-        });
-      } else {
-        await ctx.replyWithMarkdown(message, keyboard);
-      }
-      
-    } catch (error) {
-      console.error('View message error:', error);
-      await ctx.answerCbQuery('❌ Error loading message');
-    }
+
+  async forceReinitializeAllBots() {
+    console.log('🔄 FORCE: Reinitializing all mini-bots...');
+    this.initializationAttempts = 0;
+    this.isInitialized = false;
+    return await this.initializeAllBots();
   }
-  
-  handleQuickReply = async (ctx) => {
-    try {
-      const feedbackId = ctx.match[1];
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      await ctx.answerCbQuery();
-      
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-      if (!isAdmin) {
-        await ctx.reply('❌ Admin access required.');
-        return;
-      }
-      
-      await this.startReply(ctx, feedbackId);
-    } catch (error) {
-      console.error('Quick reply error:', error);
-      await ctx.answerCbQuery('❌ Error starting reply');
-    }
+
+  getInitializationStatus() {
+    return {
+      isInitialized: this.isInitialized,
+      activeBots: this.activeBots.size,
+      attempts: this.initializationAttempts,
+      maxAttempts: this.maxInitializationAttempts,
+      status: this.isInitialized ? 'READY' : 'INITIALIZING'
+    };
   }
-  
+
   handleStart = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -496,7 +493,6 @@ class MiniBotManager {
       const message = ctx.message.text;
       const { metaBotInfo } = ctx;
       
-      // Check sessions first
       const broadcastSession = this.broadcastSessions.get(user.id);
       if (broadcastSession && broadcastSession.step === 'awaiting_message') {
         if (message === '/cancel') {
@@ -533,7 +529,6 @@ class MiniBotManager {
         return;
       }
       
-      // Regular message handling
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
         await this.showAdminDashboard(ctx, metaBotInfo);
@@ -568,10 +563,8 @@ class MiniBotManager {
         message_type: 'text'
       });
       
-      // Send INSTANT real-time notification to admins with message flow
       await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user);
       
-      // Send success message and schedule deletion after 5 seconds
       const successMsg = await ctx.reply('✅ Your message has been received. We will reply soon!');
       await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
       
@@ -819,7 +812,6 @@ class MiniBotManager {
         replied_at: new Date()
       });
       
-      // Send success message and schedule deletion after 5 seconds
       const successMsg = await ctx.reply('✅ Reply sent successfully!');
       await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
       
@@ -1037,7 +1029,6 @@ class MiniBotManager {
     
     await admin.destroy();
     
-    // Send success message and schedule deletion after 5 seconds
     const successMsg = await ctx.reply(`✅ Admin ${adminUsername} has been removed successfully.`);
     await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
     
@@ -1116,7 +1107,6 @@ processAddAdmin = async (ctx, botId, input) => {
     
     const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
     
-    // Send success message and schedule deletion after 5 seconds
     const successMsg = await ctx.reply(
       `✅ *${userDisplay} added as admin!*\n\n` +
       `They can now reply to messages and send broadcasts.`,
@@ -1266,19 +1256,20 @@ processAddAdmin = async (ctx, botId, input) => {
     }
   }
 
-  // NEW: Health check method to verify all bots are running
   healthCheck = () => {
     console.log('🏥 Mini-bot Manager Health Check:');
     console.log(`📊 Active bots: ${this.activeBots.size}`);
     console.log(`🏁 Initialized: ${this.isInitialized}`);
     console.log(`🔄 Initialization in progress: ${!!this.initializationPromise}`);
+    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
     
     this.debugActiveBots();
     
     return {
       isHealthy: this.isInitialized && !this.initializationPromise,
       activeBots: this.activeBots.size,
-      status: this.isInitialized ? 'READY' : 'INITIALIZING'
+      status: this.isInitialized ? 'READY' : 'INITIALIZING',
+      attempts: this.initializationAttempts
     };
   }
 }
