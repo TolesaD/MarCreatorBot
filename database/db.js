@@ -13,11 +13,19 @@ if (!config.DATABASE_URL) {
     process.exit(1);
   } else {
     console.warn('⚠️  Continuing without database connection in development');
-    // Create a dummy sequelize instance that will fail on connection attempts
     sequelize = new Sequelize('postgres://localhost:5432/temp');
   }
 } else {
   console.log('🔄 Configuring PostgreSQL database...');
+  
+  // CRITICAL: Parse DATABASE_URL for better logging (without exposing credentials)
+  try {
+    const dbUrl = new URL(config.DATABASE_URL);
+    console.log(`📊 PostgreSQL Host: ${dbUrl.hostname}`);
+    console.log(`📊 PostgreSQL Database: ${dbUrl.pathname.substring(1)}`);
+  } catch (error) {
+    console.log('⚠️  Could not parse DATABASE_URL for logging');
+  }
   
   sequelize = new Sequelize(config.DATABASE_URL, {
     dialect: 'postgres',
@@ -27,10 +35,8 @@ if (!config.DATABASE_URL) {
         require: true,
         rejectUnauthorized: false
       } : false,
-      // Additional PostgreSQL optimizations
       connectTimeout: 60000,
       keepAlive: true,
-      // Support for large queries
       statement_timeout: 60000,
       query_timeout: 60000,
     },
@@ -40,7 +46,6 @@ if (!config.DATABASE_URL) {
       min: 0,
       acquire: config.DATABASE_POOL_ACQUIRE || 60000,
       idle: config.DATABASE_POOL_IDLE || 10000,
-      // PostgreSQL specific pool settings
       evict: 10000,
       handleDisconnects: true,
     },
@@ -59,15 +64,7 @@ if (!config.DATABASE_URL) {
         /SequelizeDatabaseError/,
       ],
     },
-    // Connection timeout
     connectTimeout: 60000,
-    // Better reconnection settings
-    reconnect: {
-      max_retries: 5,
-      onRetry: function(count) {
-        console.log(`🔄 Database reconnection attempt ${count}`);
-      }
-    }
   });
 }
 
@@ -86,27 +83,38 @@ const connectDB = async () => {
       await sequelize.authenticate();
       console.log('✅ PostgreSQL database connected successfully');
       
-      // Sync all models with safe approach
+      // CRITICAL: Use alter in production to ensure schema matches models
       const syncOptions = config.NODE_ENV === 'production' 
-        ? { alter: true, force: false }  // Use alter in production to preserve data
+        ? { alter: true, force: false }
         : { alter: true, force: false };
       
       console.log('🔄 Synchronizing database models...');
       await sequelize.sync(syncOptions);
       console.log('✅ Database models synchronized successfully');
       
-      // Verify we can query the database
+      // CRITICAL: Verify we can query the bots table specifically
       try {
         const { Bot } = require('../models');
         const botCount = await Bot.count();
         console.log(`📊 Database verified: ${botCount} bots found`);
         
         if (botCount > 0) {
-          const activeBots = await Bot.findAll({ where: { is_active: true } });
-          console.log(`📊 Active bots: ${activeBots.length}`);
+          const activeBots = await Bot.findAll({ 
+            where: { is_active: true },
+            attributes: ['id', 'bot_name', 'bot_id', 'is_active']
+          });
+          console.log(`📊 Active bots ready for initialization: ${activeBots.length}`);
+          
+          // Log each active bot for debugging
+          activeBots.forEach(bot => {
+            console.log(`   🤖 ${bot.bot_name} (ID: ${bot.id}, Bot ID: ${bot.bot_id})`);
+          });
+        } else {
+          console.log('ℹ️  No bots found in database - this is normal for new deployment');
         }
       } catch (queryError) {
-        console.log('⚠️  Could not query bots table (might be first run):', queryError.message);
+        console.log('⚠️  Could not query bots table:', queryError.message);
+        // This might happen on first run, continue anyway
       }
       
       return true;
@@ -133,14 +141,14 @@ const connectDB = async () => {
       }
       
       // Wait before retrying with exponential backoff
-      const delay = Math.pow(2, 5 - retries) * 1000; // 2s, 4s, 8s, 16s, 32s
+      const delay = Math.pow(2, 5 - retries) * 1000;
       console.log(`🔄 Retrying in ${delay/1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 };
 
-// Add health check method
+// Health check method
 const healthCheck = async () => {
   try {
     await sequelize.authenticate();
@@ -154,18 +162,20 @@ const healthCheck = async () => {
         total: botCount,
         active: activeBots
       },
-      dialect: 'postgres'
+      dialect: 'postgres',
+      status: 'CONNECTED'
     };
   } catch (error) {
     return {
       healthy: false,
       error: error.message,
-      dialect: 'postgres'
+      dialect: 'postgres',
+      status: 'DISCONNECTED'
     };
   }
 };
 
-// Add method to get database info (for debugging)
+// Get database info for debugging
 const getDatabaseInfo = async () => {
   try {
     const [result] = await sequelize.query(`
@@ -181,4 +191,46 @@ const getDatabaseInfo = async () => {
   }
 };
 
-module.exports = { sequelize, connectDB, healthCheck, getDatabaseInfo };
+// CRITICAL: Add method to check if bots table exists and is accessible
+const checkBotsTable = async () => {
+  try {
+    const [result] = await sequelize.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'bots'
+      );
+    `);
+    const tableExists = result[0].exists;
+    
+    if (tableExists) {
+      const { Bot } = require('../models');
+      const botCount = await Bot.count();
+      return {
+        exists: true,
+        accessible: true,
+        botCount: botCount
+      };
+    } else {
+      return {
+        exists: false,
+        accessible: false,
+        botCount: 0
+      };
+    }
+  } catch (error) {
+    return {
+      exists: false,
+      accessible: false,
+      error: error.message
+    };
+  }
+};
+
+module.exports = { 
+  sequelize, 
+  connectDB, 
+  healthCheck, 
+  getDatabaseInfo,
+  checkBotsTable  // NEW: Added for better debugging
+};
