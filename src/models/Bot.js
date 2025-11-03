@@ -1,6 +1,6 @@
 ﻿const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../database/db');
-const { encrypt, decrypt } = require('../utils/encryption');
+const { encrypt, decrypt, isEncryptionWorking } = require('../utils/encryption');
 
 const Bot = sequelize.define('Bot', {
   id: {
@@ -49,31 +49,45 @@ const Bot = sequelize.define('Bot', {
   tableName: 'bots',
   timestamps: false,
   hooks: {
-    beforeCreate: (bot) => {
+    beforeCreate: async (bot) => {
+      // CRITICAL FIX: Test encryption before using it
+      if (!isEncryptionWorking()) {
+        console.error('💥 ENCRYPTION SYSTEM NOT WORKING - cannot create bot');
+        throw new Error('Encryption system failure - cannot secure bot token');
+      }
+      
       // Always encrypt the token on creation
       if (bot.bot_token && !isEncrypted(bot.bot_token)) {
         console.log(`🔐 Encrypting token for new bot: ${bot.bot_name}`);
         try {
-          bot.bot_token = encrypt(bot.bot_token);
+          const encrypted = encrypt(bot.bot_token);
+          if (!encrypted) {
+            throw new Error('Encryption returned null');
+          }
+          bot.bot_token = encrypted;
           console.log(`✅ Token encrypted successfully for: ${bot.bot_name}`);
         } catch (error) {
           console.error(`❌ Failed to encrypt token for ${bot.bot_name}:`, error.message);
-          throw new Error('Token encryption failed');
+          throw new Error('Token encryption failed: ' + error.message);
         }
       }
       bot.updated_at = new Date();
     },
-    beforeUpdate: (bot) => {
+    beforeUpdate: async (bot) => {
       bot.updated_at = new Date();
       // Encrypt token only if it's being changed and not already encrypted
       if (bot.changed('bot_token') && bot.bot_token && !isEncrypted(bot.bot_token)) {
         console.log(`🔐 Re-encrypting token for bot: ${bot.bot_name}`);
         try {
-          bot.bot_token = encrypt(bot.bot_token);
+          const encrypted = encrypt(bot.bot_token);
+          if (!encrypted) {
+            throw new Error('Encryption returned null');
+          }
+          bot.bot_token = encrypted;
           console.log(`✅ Token re-encrypted successfully for: ${bot.bot_name}`);
         } catch (error) {
           console.error(`❌ Failed to re-encrypt token for ${bot.bot_name}:`, error.message);
-          throw new Error('Token re-encryption failed');
+          throw new Error('Token re-encryption failed: ' + error.message);
         }
       }
     }
@@ -84,6 +98,7 @@ const Bot = sequelize.define('Bot', {
 function isEncrypted(token) {
   if (!token || typeof token !== 'string') return false;
   
+  // CRITICAL FIX: More robust encrypted format detection
   try {
     // Check if it matches our encryption format (iv:authTag:encrypted)
     const parts = token.split(':');
@@ -91,12 +106,15 @@ function isEncrypted(token) {
            parts[0].length === 32 && // iv hex (16 bytes = 32 hex chars)
            parts[1].length === 32;   // authTag hex (16 bytes = 32 hex chars)
     
-    // Additional validation: try to decrypt to verify
-    if (isValidFormat) {
+    if (!isValidFormat) return false;
+    
+    // Additional validation: try to decrypt to verify (but don't throw on failure)
+    try {
       const testDecrypt = decrypt(token);
       return !!testDecrypt; // If decrypt succeeds, it's properly encrypted
+    } catch {
+      return false; // If decrypt fails, it's not properly encrypted
     }
-    return false;
   } catch (error) {
     return false;
   }
@@ -105,7 +123,7 @@ function isEncrypted(token) {
 // Instance method to get decrypted token
 Bot.prototype.getDecryptedToken = function() {
   try {
-    console.log(`🔓 Attempting to decrypt token for: ${this.bot_name} (ID: ${this.bot_id})`);
+    console.log(`🔓 Attempting to decrypt token for: ${this.bot_name} (ID: ${this.id}, DB ID: ${this.bot_id})`);
     
     if (!this.bot_token) {
       console.error('❌ No token found for bot:', this.bot_name);
@@ -115,6 +133,12 @@ Bot.prototype.getDecryptedToken = function() {
     // Validate token format first
     if (typeof this.bot_token !== 'string') {
       console.error(`❌ Invalid token format for: ${this.bot_name}`);
+      return null;
+    }
+    
+    // CRITICAL FIX: Test encryption system first
+    if (!isEncryptionWorking()) {
+      console.error(`💥 ENCRYPTION SYSTEM FAILURE for bot: ${this.bot_name}`);
       return null;
     }
     
@@ -129,6 +153,7 @@ Bot.prototype.getDecryptedToken = function() {
       // Validate decrypted token format
       if (!isValidTokenFormat(decrypted)) {
         console.error(`❌ Decrypted token has invalid format for: ${this.bot_name}`);
+        console.error(`💡 Token: ${decrypted.substring(0, 20)}...`);
         return null;
       }
       
@@ -140,10 +165,12 @@ Bot.prototype.getDecryptedToken = function() {
       // Validate plain text token format
       if (!isValidTokenFormat(this.bot_token)) {
         console.error(`❌ Plain text token has invalid format for: ${this.bot_name}`);
+        console.error(`💡 Token: ${this.bot_token.substring(0, 20)}...`);
         return null;
       }
       
       // Token is already plain text (might be from old data)
+      console.log(`✅ Using plain text token for: ${this.bot_name}`);
       return this.bot_token;
     }
   } catch (error) {
@@ -158,8 +185,32 @@ function isValidTokenFormat(token) {
   
   // Telegram bot tokens typically follow this pattern: numbers:letters
   const tokenPattern = /^\d+:[a-zA-Z0-9_-]+$/;
-  return tokenPattern.test(token);
+  const isValid = tokenPattern.test(token);
+  
+  if (!isValid) {
+    console.error(`❌ Invalid token format: ${token.substring(0, 20)}...`);
+  }
+  
+  return isValid;
 }
+
+// CRITICAL: Add method to test token decryption without initializing bot
+Bot.prototype.testTokenDecryption = function() {
+  try {
+    const token = this.getDecryptedToken();
+    return {
+      success: !!token,
+      token: token ? `${token.substring(0, 10)}...` : null,
+      message: token ? 'Token decryption successful' : 'Token decryption failed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      token: null,
+      message: `Token decryption error: ${error.message}`
+    };
+  }
+};
 
 // Static method to find by bot_id
 Bot.findByBotId = async function(botId) {

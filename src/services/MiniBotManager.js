@@ -65,7 +65,7 @@ class MiniBotManager {
       for (const botRecord of activeBots) {
         try {
           console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-          const success = await this.initializeBot(botRecord);
+          const success = await this.initializeBotWithEncryptionCheck(botRecord);
           if (success) {
             successCount++;
             console.log(`✅ Successfully initialized: ${botRecord.bot_name}`);
@@ -112,6 +112,28 @@ class MiniBotManager {
     }
   }
   
+  // Add this method to your existing MiniBotManager class
+async initializeBotWithEncryptionCheck(botRecord) {
+  try {
+    console.log(`🔐 Testing encryption for bot: ${botRecord.bot_name}`);
+    
+    // Test token decryption first
+    const decryptionTest = await botRecord.testTokenDecryption();
+    if (!decryptionTest.success) {
+      console.error(`❌ Token decryption failed for ${botRecord.bot_name}: ${decryptionTest.message}`);
+      return false;
+    }
+    
+    console.log(`✅ Token decryption test passed for: ${botRecord.bot_name}`);
+    
+    // Now proceed with normal initialization
+    return await this.initializeBot(botRecord);
+    
+  } catch (error) {
+    console.error(`💥 Encryption check failed for ${botRecord.bot_name}:`, error.message);
+    return false;
+  }
+}
   async clearAllBots() {
     console.log('🔄 Clearing all existing bot instances...');
     const botIds = Array.from(this.activeBots.keys());
