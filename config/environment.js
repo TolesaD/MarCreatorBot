@@ -95,19 +95,17 @@ required.forEach(key => {
 
 // Validate DATABASE_URL for PostgreSQL (Railway compatible)
 if (config.DATABASE_URL) {
-  // Railway uses "postgresql://" not "postgres://"
-  const isPostgreSQL = config.DATABASE_URL.includes('postgres');
-  console.log(`🔍 DATABASE_URL validation: ${isPostgreSQL ? '✅ PostgreSQL' : '⚠️ Unknown database type'}`);
-  console.log(`🔍 DATABASE_URL starts with: ${config.DATABASE_URL.substring(0, 25)}`);
+  // Simple check - just verify it contains 'postgres'
+  const isPostgreSQL = config.DATABASE_URL && config.DATABASE_URL.includes('postgres');
   
-  if (!isPostgreSQL) {
+  if (isPostgreSQL) {
+    console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
+  } else {
     console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
-    console.error('💡 Railway provides: postgresql://username:password@host:port/database');
+    console.error('🔍 Current DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'MISSING');
     if (config.NODE_ENV === 'production') {
       process.exit(1);
     }
-  } else {
-    console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
   }
 }
 
