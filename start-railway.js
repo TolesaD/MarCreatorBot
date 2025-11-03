@@ -1,13 +1,33 @@
-// Railway Startup Script
+// Railway Startup Script - Quote Handling Version
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
-console.log('🔧 CRITICAL: This version includes fixes for mini-bot persistence');
+console.log('🔧 CRITICAL: This version handles Railway auto-quoting');
 
-// Just check the values, don't overwrite them
-console.log(`✅ NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
-console.log(`✅ PORT: ${process.env.PORT || 'not set'}`);
+// Function to strip quotes from environment variables
+function stripQuotes(value) {
+  if (typeof value === 'string') {
+    // Remove surrounding quotes if present
+    return value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+  }
+  return value;
+}
 
-// Check required environment variables
+// Process environment variables (strip quotes)
+process.env.BOT_TOKEN = stripQuotes(process.env.BOT_TOKEN);
+process.env.ENCRYPTION_KEY = stripQuotes(process.env.ENCRYPTION_KEY);
+process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
+process.env.MAIN_BOT_NAME = stripQuotes(process.env.MAIN_BOT_NAME);
+process.env.MAIN_BOT_USERNAME = stripQuotes(process.env.MAIN_BOT_USERNAME);
+
+console.log(`✅ NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`✅ PORT: ${process.env.PORT || 8080}`);
+
+// Debug: Show actual values (masked)
+console.log(`🔧 BOT_TOKEN length: ${process.env.BOT_TOKEN ? process.env.BOT_TOKEN.length : 'MISSING'}`);
+console.log(`🔧 ENCRYPTION_KEY length: ${process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 'MISSING'}`);
+console.log(`🔧 DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'MISSING'}`);
+
+// Check environment variables
 const missingVars = [];
 
 if (!process.env.BOT_TOKEN) {
@@ -33,11 +53,10 @@ if (!process.env.DATABASE_URL) {
 
 if (missingVars.length > 0) {
   console.error('\n💡 HOW TO FIX:');
-  console.error('   1. Go to your Railway project dashboard: https://railway.app');
-  console.error('   2. Click on your project');
-  console.error('   3. Go to the "Variables" tab');
-  console.error('   4. Add the missing variables: ' + missingVars.join(', '));
-  console.error('   5. Railway will automatically redeploy');
+  console.error('   1. Railway automatically adds quotes to values with special characters');
+  console.error('   2. This code now automatically strips quotes');
+  console.error('   3. Check your Railway variables for any syntax issues');
+  console.error('   4. Missing variables: ' + missingVars.join(', '));
   
   process.exit(1);
 }
