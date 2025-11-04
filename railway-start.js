@@ -1,59 +1,47 @@
-// Railway Startup Script - Debug Version
+// start-railway.js - Railway Startup with Robust Environment Loading
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
 
-// Debug: List files to see project structure
-const fs = require('fs');
-console.log('📁 Current directory files:');
 try {
-    const files = fs.readdirSync('.');
-    console.log('Root:', files);
-} catch (e) {
-    console.log('Error reading root:', e.message);
-}
+  // Load environment variables using robust loader
+  const envLoader = require('./config/railway-env');
+  const envVars = envLoader.load();
 
-console.log('📁 src directory files:');
-try {
-    const srcFiles = fs.readdirSync('./src');
-    console.log('Src:', srcFiles);
-} catch (e) {
-    console.log('Error reading src:', e.message);
-}
+  console.log('✅ Environment Variables Status:');
+  console.log(`   BOT_TOKEN: SET (${envVars.BOT_TOKEN.length} chars)`);
+  console.log(`   ENCRYPTION_KEY: SET (${envVars.ENCRYPTION_KEY.length} chars)`);
+  console.log(`   DATABASE_URL: SET (${envVars.DATABASE_URL.length} chars)`);
+  console.log(`   DATABASE_URL verified: ${envVars.DATABASE_URL.includes('postgres') ? '✅ PostgreSQL' : '❌ Not PostgreSQL'}`);
 
-// Check if app.js exists in different locations
-console.log('🔍 Checking for app.js:');
-console.log('./app.js exists:', fs.existsSync('./app.js'));
-console.log('./src/app.js exists:', fs.existsSync('./src/app.js'));
+  // Inject into process.env for compatibility
+  process.env.BOT_TOKEN = envVars.BOT_TOKEN;
+  process.env.ENCRYPTION_KEY = envVars.ENCRYPTION_KEY;
+  process.env.DATABASE_URL = envVars.DATABASE_URL;
 
-// Process environment variables
-function stripQuotes(value) {
-  if (typeof value === 'string') {
-    return value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
-  }
-  return value;
-}
+  console.log('🏃 Starting MarCreatorBot application...');
+  
+  // Start the main application
+  require('./src/app.js');
 
-process.env.BOT_TOKEN = stripQuotes(process.env.BOT_TOKEN);
-process.env.ENCRYPTION_KEY = stripQuotes(process.env.ENCRYPTION_KEY);
-process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
-
-console.log('✅ Environment variables processed');
-
-// Try to require the app
-console.log('🏃 Attempting to start application...');
-try {
-    require('./src/app.js');
-    console.log('✅ Application started successfully from src/app.js');
 } catch (error) {
-    console.error('❌ Failed to start from src/app.js:', error.message);
-    
-    // Try alternative locations
-    console.log('🔄 Trying alternative locations...');
-    try {
-        require('./app.js');
-        console.log('✅ Application started successfully from app.js');
-    } catch (error2) {
-        console.error('❌ Failed to start from app.js:', error2.message);
-        process.exit(1);
-    }
+  console.error('💥 CRITICAL: Failed to start application:', error.message);
+  
+  // Start a diagnostic server
+  const http = require('http');
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('MarCreatorBot - Environment Configuration Required\n\n' +
+      'Please configure these environment variables in Railway:\n' +
+      '- BOT_TOKEN: Your Telegram bot token\n' +
+      '- ENCRYPTION_KEY: 32-character encryption key\n' +
+      '- DATABASE_URL: Auto-provided by PostgreSQL service\n\n' +
+      'Current Status: ' + error.message
+    );
+  });
+
+  const PORT = process.env.PORT || 8080;
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Diagnostic server running on port ${PORT}`);
+    console.log('📱 Visit your Railway app URL for configuration instructions');
+  });
 }

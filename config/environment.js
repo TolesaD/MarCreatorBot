@@ -1,4 +1,16 @@
-﻿  // ==================== BOT CONFIGURATION ====================
+﻿  // config/environment.js - Updated to use Railway loader
+const railwayEnv = require('./railway-env');
+
+// Load environment variables first
+const envVars = railwayEnv.getAll();
+
+const config = {
+  // ==================== BOT CONFIGURATION ====================
+  BOT_TOKEN: envVars.BOT_TOKEN,
+  ENCRYPTION_KEY: envVars.ENCRYPTION_KEY,
+  DATABASE_URL: envVars.DATABASE_URL,
+  
+  // ==================== BOT CONFIGURATION ====================
   BOT_TOKEN: process.env.BOT_TOKEN,
   MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
   MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',

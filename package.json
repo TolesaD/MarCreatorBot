@@ -7,6 +7,8 @@
     "start": "node start-railway.js",
     "dev": "nodemon src/app.js",
     "debug": "node debug-env.js",
+    "type": "commonjs",
+    "name": "metabot-creator",
     "polling": "node src/app-polling.js",
     "setup": "node database/setup.js",
     "migrate": "node database/migrate.js",
@@ -34,7 +36,6 @@
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.3",
-    "sqlite3": "^5.1.7",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
