@@ -76,7 +76,7 @@
 
 // ==================== VALIDATION & POST-PROCESSING ====================
 
-// Enhanced DATABASE_URL validation with better timing
+/* // Enhanced DATABASE_URL validation with better timing
 if (!config.DATABASE_URL) {
   console.error('❌ DATABASE_URL is required but not set in Railway');
   console.error('🔧 Checking environment variables...');
@@ -100,8 +100,10 @@ if (!config.DATABASE_URL) {
   }
 } else {
   console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
-  console.log('   DATABASE_URL:', 'postgresql://***' + config.DATABASE_URL.split('@')[1]);
-}
+} */
+
+console.log('🔧 DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'NOT SET');
+
 // Webhook URL validation
 if (config.NODE_ENV === 'production' && !config.WEBHOOK_URL.includes('https')) {
   console.warn('⚠️  WARNING: Production webhook URL should use HTTPS for security');
