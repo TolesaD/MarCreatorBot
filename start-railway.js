@@ -1,78 +1,68 @@
-// Railway Startup Script - Wait for Environment Variables
+// Railway Startup Script
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
+console.log('🔧 CRITICAL: This version includes fixes for mini-bot persistence');
 
-// Function to wait for environment variables to be available
-async function waitForEnvironmentVariables() {
-  console.log('⏳ Waiting for Railway environment variables...');
-  
-  let attempts = 0;
-  const maxAttempts = 10;
-  
-  while (attempts < maxAttempts) {
-    // Check if required variables are available
-    const hasBotToken = process.env.BOT_TOKEN && process.env.BOT_TOKEN.length > 10;
-    const hasEncryptionKey = process.env.ENCRYPTION_KEY && process.env.ENCRYPTION_KEY.length > 10;
-    const hasDatabaseUrl = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres');
-    
-    if (hasBotToken && hasEncryptionKey && hasDatabaseUrl) {
-      console.log('✅ Environment variables are now available');
-      return true;
-    }
-    
-    attempts++;
-    console.log(`🔄 Attempt ${attempts}/${maxAttempts} - Waiting for variables...`);
-    console.log(`   BOT_TOKEN: ${process.env.BOT_TOKEN ? 'SET (' + process.env.BOT_TOKEN.length + ' chars)' : 'MISSING'}`);
-    console.log(`   ENCRYPTION_KEY: ${process.env.ENCRYPTION_KEY ? 'SET (' + process.env.ENCRYPTION_KEY.length + ' chars)' : 'MISSING'}`);
-    console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.length + ' chars)' : 'MISSING'}`);
-    
-    if (process.env.DATABASE_URL) {
-      console.log(`   DATABASE_URL starts with: ${process.env.DATABASE_URL.substring(0, 25)}`);
-    }
-    
-    // Wait 2 seconds before checking again
-    await new Promise(resolve => setTimeout(resolve, 2000));
+// Function to strip quotes from environment variables (for Railway auto-quoting)
+function stripQuotes(value) {
+  if (typeof value === 'string') {
+    return value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
   }
-  
-  console.error('❌ Environment variables never became available');
-  return false;
+  return value;
 }
 
-// Main startup function
-async function startApplication() {
-  // Wait for environment variables
-  const envReady = await waitForEnvironmentVariables();
-  
-  if (!envReady) {
-    console.error('💥 Cannot start without environment variables');
-    process.exit(1);
-  }
-  
-  console.log('✅ All environment variables are ready');
-  console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`   PORT: ${process.env.PORT || 8080}`);
-  console.log(`   BOT_TOKEN: ${process.env.BOT_TOKEN ? 'SET (' + process.env.BOT_TOKEN.length + ' chars)' : 'MISSING'}`);
-  console.log(`   ENCRYPTION_KEY: ${process.env.ENCRYPTION_KEY ? 'SET (' + process.env.ENCRYPTION_KEY.length + ' chars)' : 'MISSING'}`);
-  console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.length + ' chars)' : 'MISSING'}`);
-  
-  if (process.env.DATABASE_URL) {
-    console.log(`   DATABASE_URL verified: ${process.env.DATABASE_URL.includes('postgres') ? '✅ PostgreSQL' : '❌ Not PostgreSQL'}`);
-  }
-  
-  // Check required variables one more time
-  if (!process.env.BOT_TOKEN || !process.env.ENCRYPTION_KEY || !process.env.DATABASE_URL) {
-    console.error('❌ Required environment variables are missing after waiting');
-    process.exit(1);
-  }
-  
-  console.log('🏃 Starting application from src/app.js...');
-  
-  // Start the main application
-  require('./src/app.js');
+// Process environment variables
+process.env.BOT_TOKEN = stripQuotes(process.env.BOT_TOKEN);
+process.env.ENCRYPTION_KEY = stripQuotes(process.env.ENCRYPTION_KEY);
+process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
+process.env.MAIN_BOT_NAME = stripQuotes(process.env.MAIN_BOT_NAME);
+process.env.MAIN_BOT_USERNAME = stripQuotes(process.env.MAIN_BOT_USERNAME);
+
+console.log(`✅ NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`✅ PORT: ${process.env.PORT || 8080}`);
+
+// Debug: Show variable status (masked for security)
+console.log(`🔧 BOT_TOKEN: ${process.env.BOT_TOKEN ? 'SET (' + process.env.BOT_TOKEN.length + ' chars)' : 'MISSING'}`);
+console.log(`🔧 ENCRYPTION_KEY: ${process.env.ENCRYPTION_KEY ? 'SET (' + process.env.ENCRYPTION_KEY.length + ' chars)' : 'MISSING'}`);
+console.log(`🔧 DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'MISSING'}`);
+
+// Check required environment variables
+const missingVars = [];
+
+if (!process.env.BOT_TOKEN) {
+  missingVars.push('BOT_TOKEN');
+  console.error('❌ BOT_TOKEN: Missing - Your main bot token from BotFather');
+} else {
+  console.log('✅ BOT_TOKEN: Set');
 }
 
-// Start the application
-startApplication().catch(error => {
-  console.error('💥 Failed to start application:', error);
+if (!process.env.ENCRYPTION_KEY) {
+  missingVars.push('ENCRYPTION_KEY');
+  console.error('❌ ENCRYPTION_KEY: Missing - A 32-character random string for encryption');
+} else {
+  console.log('✅ ENCRYPTION_KEY: Set');
+}
+
+if (!process.env.DATABASE_URL) {
+  missingVars.push('DATABASE_URL');
+  console.error('❌ DATABASE_URL: Missing - PostgreSQL database URL (auto-provided by Railway)');
+} else {
+  console.log('✅ DATABASE_URL: Set');
+}
+
+if (missingVars.length > 0) {
+  console.error('\n💡 HOW TO FIX:');
+  console.error('   1. Go to your Railway project dashboard: https://railway.app');
+  console.error('   2. Click on your project');
+  console.error('   3. Go to the "Variables" tab');
+  console.error('   4. Add the missing variables: ' + missingVars.join(', '));
+  console.error('   5. Railway will automatically redeploy');
+  
   process.exit(1);
-});
+}
+
+console.log('✅ All environment variables are set');
+console.log('🏃 Starting application from src/app.js...');
+
+// Start the main application - CORRECT PATH
+require('./src/app.js');
