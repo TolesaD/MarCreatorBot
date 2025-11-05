@@ -1,4 +1,3 @@
-# start.sh
 #!/bin/bash
-echo "MarCreatorBot — STARTING VIA start.sh"
-exec node src/app.js
+echo "🚀 Starting MarCreatorBot..."
+npm start
