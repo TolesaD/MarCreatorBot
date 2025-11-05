@@ -68,7 +68,7 @@ async function healthCheck() {
     await sequelize.authenticate();
     
     // Import models dynamically to avoid circular dependency
-    const { Bot } = require('../models');
+    const { Bot } = require('../src/models');
     
     // Check if we can query the database
     const totalBots = await Bot.count();
