@@ -6,8 +6,6 @@
 # Database
 *.db
 *.db-journal
-*.sqlite
-*.sqlite3
 metabot_creator.db
 
 # Logs
