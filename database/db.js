@@ -24,7 +24,7 @@ try {
 
 console.log('   Connecting to:', dbLogInfo);
 
-// Create Sequelize instance with production settings
+// Create Sequelize instance
 const sequelize = new Sequelize(DATABASE_URL, {
   dialect: 'postgres',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -39,10 +39,6 @@ const sequelize = new Sequelize(DATABASE_URL, {
       require: true,
       rejectUnauthorized: false
     } : false
-  },
-  retry: {
-    max: 3,
-    timeout: 30000
   }
 });
 
@@ -55,7 +51,10 @@ async function connectDB() {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
     
-    // Sync all models WITHOUT importing them (avoid circular dependency)
+    // Import models after sequelize is configured
+    const { Bot, User, Admin, Feedback, UserLog, BroadcastHistory } = require('../models');
+    
+    // Sync all models
     await sequelize.sync({ alter: true });
     console.log('✅ All database models synchronized');
     
@@ -71,8 +70,8 @@ async function healthCheck() {
   try {
     await sequelize.authenticate();
     
-    // Import models dynamically to avoid circular dependency
-    const { Bot } = require('../src/models');
+    // Import models for counting
+    const { Bot } = require('../models');
     
     // Check if we can query the database
     const totalBots = await Bot.count();
