@@ -78,22 +78,23 @@
 
 console.log('🔧 Loading environment configuration...');
 
-// Enhanced debugging for DATABASE_URL
-console.log('🔍 DATABASE_URL Debug:');
-console.log('   process.env.DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('   config.DATABASE_URL exists:', !!config.DATABASE_URL);
+// ==================== ENHANCED DEBUGGING ====================
+
+console.log('🔧 ENHANCED DEBUG: Environment Variables');
+console.log('=========================================');
+console.log('DATABASE_URL from process.env:', process.env.DATABASE_URL);
+console.log('DATABASE_URL type:', typeof process.env.DATABASE_URL);
+console.log('DATABASE_URL length:', process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0);
+
 if (process.env.DATABASE_URL) {
-  console.log('   DATABASE_URL length:', process.env.DATABASE_URL.length);
-  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 20) + '...');
+  console.log('DATABASE_URL first 50 chars:', process.env.DATABASE_URL.substring(0, 50));
+  console.log('DATABASE_URL last 20 chars:', process.env.DATABASE_URL.substring(process.env.DATABASE_URL.length - 20));
 }
 
-console.log('✅ Environment loaded:');
-console.log('   NODE_ENV:', config.NODE_ENV);
-console.log('   PORT:', config.PORT);
-console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-4) : 'NOT SET');
-console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
-console.log('   DATABASE: POSTGRESQL');
-console.log('   DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
+console.log('MAIN_BOT_NAME:', process.env.MAIN_BOT_NAME);
+console.log('BOT_TOKEN length:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.length : 0);
+console.log('ENCRYPTION_KEY length:', process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 0);
+console.log('=========================================');
 
 // ==================== VALIDATION & POST-PROCESSING ====================
 
