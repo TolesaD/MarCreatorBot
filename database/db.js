@@ -51,10 +51,7 @@ async function connectDB() {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully');
     
-    // Import models after sequelize is configured
-    const { Bot, User, Admin, Feedback, UserLog, BroadcastHistory } = require('../models');
-    
-    // Sync all models
+    // Sync all models WITHOUT importing them (avoid circular dependency)
     await sequelize.sync({ alter: true });
     console.log('✅ All database models synchronized');
     
@@ -70,7 +67,7 @@ async function healthCheck() {
   try {
     await sequelize.authenticate();
     
-    // Import models for counting
+    // Import models dynamically to avoid circular dependency
     const { Bot } = require('../models');
     
     // Check if we can query the database
