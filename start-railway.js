@@ -5,8 +5,8 @@ console.log('🔧 TEMPORARY: Using hardcoded values for testing');
 
 // Temporary hardcoded values - REPLACE WITH YOUR ACTUAL VALUES
 process.env.DATABASE_URL = 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway';
-process.env.BOT_TOKEN = 'your-actual-bot-token-here'; // REPLACE
-process.env.ENCRYPTION_KEY = 'your-actual-encryption-key-here'; // REPLACE
+process.env.BOT_TOKEN = '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI; // REPLACE
+process.env.ENCRYPTION_KEY = 'W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU='; // REPLACE
 process.env.MAIN_BOT_NAME = 'MarCreatorBot';
 process.env.PORT = '8080';
 process.env.NODE_ENV = 'production';

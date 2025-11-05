@@ -112,28 +112,28 @@ class MiniBotManager {
     }
   }
   
-  // Add this method to your existing MiniBotManager class
-async initializeBotWithEncryptionCheck(botRecord) {
-  try {
-    console.log(`🔐 Testing encryption for bot: ${botRecord.bot_name}`);
-    
-    // Test token decryption first
-    const decryptionTest = await botRecord.testTokenDecryption();
-    if (!decryptionTest.success) {
-      console.error(`❌ Token decryption failed for ${botRecord.bot_name}: ${decryptionTest.message}`);
+  async initializeBotWithEncryptionCheck(botRecord) {
+    try {
+      console.log(`🔐 Testing encryption for bot: ${botRecord.bot_name}`);
+      
+      // Test token decryption first
+      const decryptionTest = await botRecord.testTokenDecryption();
+      if (!decryptionTest.success) {
+        console.error(`❌ Token decryption failed for ${botRecord.bot_name}: ${decryptionTest.message}`);
+        return false;
+      }
+      
+      console.log(`✅ Token decryption test passed for: ${botRecord.bot_name}`);
+      
+      // Now proceed with normal initialization
+      return await this.initializeBot(botRecord);
+      
+    } catch (error) {
+      console.error(`💥 Encryption check failed for ${botRecord.bot_name}:`, error.message);
       return false;
     }
-    
-    console.log(`✅ Token decryption test passed for: ${botRecord.bot_name}`);
-    
-    // Now proceed with normal initialization
-    return await this.initializeBot(botRecord);
-    
-  } catch (error) {
-    console.error(`💥 Encryption check failed for ${botRecord.bot_name}:`, error.message);
-    return false;
   }
-}
+
   async clearAllBots() {
     console.log('🔄 Clearing all existing bot instances...');
     const botIds = Array.from(this.activeBots.keys());
@@ -280,8 +280,6 @@ async initializeBotWithEncryptionCheck(botRecord) {
     bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
     bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
     bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
-    bot.action(/^view_message_(.+)/, (ctx) => this.handleViewMessage(ctx));
-    bot.action(/^quick_reply_(.+)/, (ctx) => this.handleQuickReply(ctx));
     
     bot.catch((error, ctx) => {
       console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
@@ -1032,35 +1030,35 @@ async initializeBotWithEncryptionCheck(botRecord) {
   }
   
   removeAdmin = async (ctx, botId, adminId) => {
-  try {
-    const admin = await Admin.findByPk(adminId);
-    
-    if (!admin) {
-      await ctx.reply('❌ Admin not found.');
-      return;
+    try {
+      const admin = await Admin.findByPk(adminId);
+      
+      if (!admin) {
+        await ctx.reply('❌ Admin not found.');
+        return;
+      }
+      
+      const bot = await Bot.findByPk(botId);
+      
+      if (admin.admin_user_id === bot.owner_id) {
+        await ctx.reply('❌ Cannot remove bot owner.');
+        return;
+      }
+      
+      const adminUsername = admin.admin_username || `User#${admin.admin_user_id}`;
+      
+      await admin.destroy();
+      
+      const successMsg = await ctx.reply(`✅ Admin ${adminUsername} has been removed successfully.`);
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      await this.showAdmins(ctx, botId);
+      
+    } catch (error) {
+      console.error('Remove admin error:', error);
+      await ctx.reply('❌ Error removing admin.');
     }
-    
-    const bot = await Bot.findByPk(botId);
-    
-    if (admin.admin_user_id === bot.owner_id) {
-      await ctx.reply('❌ Cannot remove bot owner.');
-      return;
-    }
-    
-    const adminUsername = admin.admin_username || `User#${admin.admin_user_id}`;
-    
-    await admin.destroy();
-    
-    const successMsg = await ctx.reply(`✅ Admin ${adminUsername} has been removed successfully.`);
-    await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-    
-    await this.showAdmins(ctx, botId);
-    
-  } catch (error) {
-    console.error('Remove admin error:', error);
-    await ctx.reply('❌ Error removing admin.');
   }
-}
   
   startAddAdmin = async (ctx, botId) => {
     try {
@@ -1082,66 +1080,66 @@ async initializeBotWithEncryptionCheck(botRecord) {
     }
   }
   
-processAddAdmin = async (ctx, botId, input) => {
-  try {
-    let targetUserId;
-    
-    if (/^\d+$/.test(input)) {
-      targetUserId = parseInt(input);
-    } else {
-      const username = input.replace('@', '');
-      const user = await User.findOne({ where: { username: username } });
-      if (!user) {
-        await ctx.reply(`❌ User @${username} not found. Ask them to start @MarCreatorBot first.`);
+  processAddAdmin = async (ctx, botId, input) => {
+    try {
+      let targetUserId;
+      
+      if (/^\d+$/.test(input)) {
+        targetUserId = parseInt(input);
+      } else {
+        const username = input.replace('@', '');
+        const user = await User.findOne({ where: { username: username } });
+        if (!user) {
+          await ctx.reply(`❌ User @${username} not found. Ask them to start @MarCreatorBot first.`);
+          return;
+        }
+        targetUserId = user.telegram_id;
+      }
+      
+      const existingAdmin = await Admin.findOne({
+        where: { bot_id: botId, admin_user_id: targetUserId }
+      });
+      
+      if (existingAdmin) {
+        await ctx.reply('❌ This user is already an admin.');
         return;
       }
-      targetUserId = user.telegram_id;
-    }
-    
-    const existingAdmin = await Admin.findOne({
-      where: { bot_id: botId, admin_user_id: targetUserId }
-    });
-    
-    if (existingAdmin) {
-      await ctx.reply('❌ This user is already an admin.');
-      return;
-    }
-    
-    const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
-    if (!targetUser) {
-      await ctx.reply('❌ User not found. Ask them to start @MarCreatorBot first.');
-      return;
-    }
-    
-    await Admin.create({
-      bot_id: botId,
-      admin_user_id: targetUserId,
-      admin_username: targetUser.username,
-      added_by: ctx.from.id,
-      permissions: {
-        can_reply: true,
-        can_broadcast: true,
-        can_manage_admins: false,
-        can_view_stats: true,
-        can_deactivate: false
+      
+      const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
+      if (!targetUser) {
+        await ctx.reply('❌ User not found. Ask them to start @MarCreatorBot first.');
+        return;
       }
-    });
-    
-    const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
-    
-    const successMsg = await ctx.reply(
-      `✅ *${userDisplay} added as admin!*\n\n` +
-      `They can now reply to messages and send broadcasts.`,
-      { parse_mode: 'Markdown' }
-    );
-    
-    await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-    
-  } catch (error) {
-    console.error('Process add admin error:', error);
-    await ctx.reply('❌ Error adding admin.');
+      
+      await Admin.create({
+        bot_id: botId,
+        admin_user_id: targetUserId,
+        admin_username: targetUser.username,
+        added_by: ctx.from.id,
+        permissions: {
+          can_reply: true,
+          can_broadcast: true,
+          can_manage_admins: false,
+          can_view_stats: true,
+          can_deactivate: false
+        }
+      });
+      
+      const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
+      
+      const successMsg = await ctx.reply(
+        `✅ *${userDisplay} added as admin!*\n\n` +
+        `They can now reply to messages and send broadcasts.`,
+        { parse_mode: 'Markdown' }
+      );
+      
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+    } catch (error) {
+      console.error('Process add admin error:', error);
+      await ctx.reply('❌ Error adding admin.');
+    }
   }
-}
   
   showAbout = async (ctx, metaBotInfo) => {
     try {
