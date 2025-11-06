@@ -1,41 +1,26 @@
 const { Sequelize } = require('sequelize');
-
-// Direct environment variable access for database connection
-const DATABASE_URL = process.env.DATABASE_URL;
+const config = require('../config/environment'); // Use config instead of direct process.env
 
 console.log('🗄️ Database configuration:');
-console.log('   DATABASE_URL from process.env:', !!DATABASE_URL);
-console.log('   DATABASE_URL length:', DATABASE_URL ? DATABASE_URL.length : 0);
+console.log('   Using DATABASE_URL from config');
 
-if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL is not defined in environment variables');
-  console.error('💡 Please check your Railway environment variables');
+if (!config.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is not configured');
   process.exit(1);
 }
 
-// Parse and log database info safely
-let dbLogInfo = 'Could not parse DATABASE_URL';
-try {
-  const dbUrl = new URL(DATABASE_URL);
-  dbLogInfo = `${dbUrl.hostname}:${dbUrl.port}${dbUrl.pathname}`;
-} catch (e) {
-  dbLogInfo = DATABASE_URL.substring(0, 50) + '...';
-}
-
-console.log('   Connecting to:', dbLogInfo);
-
-// Create Sequelize instance
-const sequelize = new Sequelize(DATABASE_URL, {
-  dialect: 'postgres',
-  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+// Create Sequelize instance using config
+const sequelize = new Sequelize(config.DATABASE_URL, {
+  dialect: config.DATABASE_DIALECT,
+  logging: config.NODE_ENV === 'development' ? console.log : false,
   pool: {
-    max: parseInt(process.env.DATABASE_POOL_MAX) || 20,
+    max: config.DATABASE_POOL_MAX,
     min: 0,
-    acquire: parseInt(process.env.DATABASE_POOL_ACQUIRE) || 60000,
-    idle: parseInt(process.env.DATABASE_POOL_IDLE) || 30000,
+    acquire: config.DATABASE_POOL_ACQUIRE,
+    idle: config.DATABASE_POOL_IDLE,
   },
   dialectOptions: {
-    ssl: process.env.NODE_ENV === 'production' ? {
+    ssl: config.NODE_ENV === 'production' ? {
       require: true,
       rejectUnauthorized: false
     } : false
