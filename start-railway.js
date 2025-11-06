@@ -1,47 +1,61 @@
-// start-railway.js - TEMPORARY FIX
-console.log('🚀 MarCreatorBot - Railway Startup');
-console.log('===================================');
+// start-railway.js - PRODUCTION VERSION
+console.log('🚀 MarCreatorBot - Production Startup');
+console.log('=====================================');
 
-// TEMPORARY: Fallback values for debugging
-const config = {
-  BOT_TOKEN: process.env.BOT_TOKEN || '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI',
-  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway',
-  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || 'W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU='
-};
+// Debug to see what Railway is actually providing
+console.log('🔍 Railway Environment Analysis:');
+console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT || 'NOT SET');
+console.log('   RAILWAY_SERVICE_NAME:', process.env.RAILWAY_SERVICE_NAME || 'NOT SET');
+console.log('   RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || 'NOT SET');
 
-console.log('🔍 Environment Debug:');
-console.log('   process.env.BOT_TOKEN:', process.env.BOT_TOKEN ? 'SET' : 'NOT SET');
-console.log('   process.env.DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-console.log('   process.env.ENCRYPTION_KEY:', process.env.ENCRYPTION_KEY ? 'SET' : 'NOT SET');
+// Check our required variables
+const requiredVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
+const missingVars = requiredVars.filter(varName => !process.env[varName]);
 
-// Set fallback values if Railway variables aren't loaded
-if (!process.env.BOT_TOKEN) {
-  console.log('⚠️  Using fallback BOT_TOKEN (Railway variable not loaded)');
-  process.env.BOT_TOKEN = config.BOT_TOKEN;
+if (missingVars.length > 0) {
+  console.error('❌ CRITICAL: Missing required environment variables:');
+  missingVars.forEach(varName => console.error(`   - ${varName}`));
+  console.error('\n💡 RAILWAY SETUP INSTRUCTIONS:');
+  console.error('   1. Go to your Railway project');
+  console.error('   2. Click on your SERVICE (not the project)');
+  console.error('   3. Go to Settings → Variables');
+  console.error('   4. Add these exact variable names:');
+  console.error('      - BOT_TOKEN');
+  console.error('      - DATABASE_URL'); 
+  console.error('      - ENCRYPTION_KEY');
+  console.error('   5. Redeploy after adding variables');
+  process.exit(1);
 }
-if (!process.env.DATABASE_URL) {
-  console.log('⚠️  Using fallback DATABASE_URL (Railway variable not loaded)');
-  process.env.DATABASE_URL = config.DATABASE_URL;
-}
-if (!process.env.ENCRYPTION_KEY) {
-  console.log('⚠️  Using fallback ENCRYPTION_KEY (Railway variable not loaded)');
-  process.env.ENCRYPTION_KEY = config.ENCRYPTION_KEY;
-}
 
-console.log('✅ Proceeding with startup...');
+console.log('✅ All required environment variables are set');
+console.log(`   BOT_TOKEN: ***${process.env.BOT_TOKEN.slice(-6)}`);
+console.log(`   DATABASE_URL: ***${process.env.DATABASE_URL.split('@')[1]}`);
+console.log(`   ENCRYPTION_KEY: SET`);
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'production'}`);
+console.log(`   PORT: ${process.env.PORT || 8080}`);
 
 // Start application
 (async () => {
   console.log('🏃 Starting application...');
   
   try {
-    const { startApplication } = require('./src/app.js');
-    await startApplication();
+    // Import the main application
+    const MetaBotCreator = require('./src/app.js');
     
-    console.log('✅ MarCreatorBot is now RUNNING!');
+    console.log('🔧 Creating bot instance...');
+    const app = new MetaBotCreator();
+    
+    console.log('🔄 Initializing application...');
+    await app.initialize();
+    
+    console.log('🚀 Starting bot...');
+    app.start();
+    
+    console.log('✅ MarCreatorBot is now LIVE in production!');
     
   } catch (error) {
     console.error('❌ Startup failed:', error.message);
+    console.error('Stack trace:', error.stack);
     process.exit(1);
   }
 })();
