@@ -1,123 +1,62 @@
-﻿// ==================== ENVIRONMENT CONFIGURATION ====================
+﻿console.log('🔧 CRITICAL: This version handles Railway auto-quoting and undefined envs');
 
-console.log('🔧 Loading environment configuration...');
-
-// Handle Railway fallback first (before building config)
-if (!process.env.DATABASE_URL && process.env.RAILWAY_DATABASE_URL) {
-  console.log('🔧 Using RAILWAY_DATABASE_URL as DATABASE_URL');
-  process.env.DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
+// Utility to safely remove surrounding quotes from env vars
+function cleanEnv(value) {
+  if (!value) return undefined;
+  return value.replace(/^['"]|['"]$/g, '').trim();
 }
+
+// Clean and normalize all Railway-provided vars
+const rawDatabaseUrl = cleanEnv(process.env.DATABASE_URL || process.env.RAILWAY_DATABASE_URL);
+const rawBotToken = cleanEnv(process.env.BOT_TOKEN);
+const rawEncryptionKey = cleanEnv(process.env.ENCRYPTION_KEY);
 
 const config = {
   // ==================== BOT CONFIGURATION ====================
-  BOT_TOKEN: process.env.BOT_TOKEN,
+  BOT_TOKEN: rawBotToken,
   MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
   MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',
-  WEBHOOK_URL:
-    process.env.WEBHOOK_URL ||
-    `https://${process.env.RAILWAY_STATIC_URL || `localhost:${process.env.PORT || 3000}`}`,
+  WEBHOOK_URL: process.env.WEBHOOK_URL || `https://${process.env.RAILWAY_STATIC_URL || `localhost:${process.env.PORT || 3000}`}`,
 
-  // ==================== DATABASE CONFIGURATION ====================
-  DATABASE_URL: process.env.DATABASE_URL,
+  // ==================== DATABASE ====================
+  DATABASE_URL: rawDatabaseUrl,
   DATABASE_DIALECT: 'postgres',
 
+  // ==================== POOL CONFIG ====================
   DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 20,
   DATABASE_POOL_IDLE: parseInt(process.env.DATABASE_POOL_IDLE) || 30000,
   DATABASE_POOL_ACQUIRE: parseInt(process.env.DATABASE_POOL_ACQUIRE) || 60000,
 
-  // ==================== ENCRYPTION ====================
-  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  // ==================== SECURITY ====================
+  ENCRYPTION_KEY: rawEncryptionKey,
 
-  // ==================== SERVER CONFIGURATION ====================
+  // ==================== SERVER ====================
   PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || 'production',
   HOST: process.env.HOST || '0.0.0.0',
 
-  // ==================== SECURITY & LIMITS ====================
-  MAX_BOTS_PER_USER: parseInt(process.env.MAX_BOTS_PER_USER) || 10,
-  MAX_ADMINS_PER_BOT: parseInt(process.env.MAX_ADMINS_PER_BOT) || 10,
-  MAX_BROADCAST_LENGTH: parseInt(process.env.MAX_BROADCAST_LENGTH) || 4000,
-
-  RATE_LIMIT_WINDOW: parseInt(process.env.RATE_LIMIT_WINDOW) || 900000,
-  RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-
-  // ==================== FEATURE FLAGS ====================
-  ENABLE_BROADCASTS: process.env.ENABLE_BROADCASTS !== 'false',
-  ENABLE_TEAM_MANAGEMENT: process.env.ENABLE_TEAM_MANAGEMENT !== 'false',
-  ENABLE_ANALYTICS: process.env.ENABLE_ANALYTICS !== 'false',
-  ENABLE_MINI_BOT_DASHBOARD: process.env.ENABLE_MINI_BOT_DASHBOARD !== 'false',
-  ENABLE_DIRECT_MANAGEMENT: process.env.ENABLE_DIRECT_MANAGEMENT !== 'false',
-
-  // ==================== MINI-BOT SETTINGS ====================
-  MINI_BOT_COMMANDS_ENABLED: process.env.MINI_BOT_COMMANDS_ENABLED !== 'false',
-  REAL_TIME_NOTIFICATIONS: process.env.REAL_TIME_NOTIFICATIONS !== 'false',
-  AUTO_RESTART_BOTS: process.env.AUTO_RESTART_BOTS !== 'false',
-
-  // ==================== BRANDING ====================
-  WATERMARK_TEXT: '✨ Created with [MarCreatorBot](https://t.me/MarCreatorBot)',
-  BOT_NAME: process.env.BOT_NAME || 'MarCreatorBot',
-  SUPPORT_USERNAME: process.env.SUPPORT_USERNAME || 'MarCreatorSupportBot',
-
-  // ==================== LOGGING ====================
+  // ==================== MISC ====================
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-  LOG_FILE: process.env.LOG_FILE || './logs/app.log',
-
-  // ==================== BACKUP & MAINTENANCE ====================
-  BACKUP_ENABLED: process.env.BACKUP_ENABLED === 'true',
-  BACKUP_SCHEDULE: process.env.BACKUP_SCHEDULE || '0 2 * * *',
-  BACKUP_RETENTION_DAYS: parseInt(process.env.BACKUP_RETENTION_DAYS) || 7,
-
-  // ==================== PERFORMANCE ====================
-  CACHE_ENABLED: process.env.CACHE_ENABLED !== 'false',
-  CACHE_TTL: parseInt(process.env.CACHE_TTL) || 300000,
-  MINI_BOT_TIMEOUT: parseInt(process.env.MINI_BOT_TIMEOUT) || 90000,
-  BROADCAST_RATE_LIMIT: parseInt(process.env.BROADCAST_RATE_LIMIT) || 20,
-
-  // ==================== MONITORING ====================
-  HEALTH_CHECK_INTERVAL: parseInt(process.env.HEALTH_CHECK_INTERVAL) || 30000,
-  METRICS_ENABLED: process.env.METRICS_ENABLED === 'true',
-
-  // ==================== BOT PERSISTENCE ====================
-  PERSIST_BOT_SESSIONS: process.env.PERSIST_BOT_SESSIONS !== 'false',
-  AUTO_RECONNECT_BOTS: process.env.AUTO_RECONNECT_BOTS !== 'false',
 };
 
-// ==================== DEBUG LOGS ====================
-
-console.log('🔍 DATABASE_URL Debug:');
-console.log('   process.env.DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('   config.DATABASE_URL exists:', !!config.DATABASE_URL);
-if (process.env.DATABASE_URL) {
-  console.log('   DATABASE_URL length:', process.env.DATABASE_URL.length);
-  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 20) + '...');
-}
-
-console.log('✅ Environment loaded:');
-console.log('   NODE_ENV:', config.NODE_ENV);
-console.log('   PORT:', config.PORT);
-console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-4) : 'NOT SET');
-console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
-console.log('   DATABASE: POSTGRESQL');
-console.log('   DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
-
-// ==================== VALIDATION & AUTO-FIX ====================
+// ==================== VALIDATION ====================
+console.log('✅ NODE_ENV:', config.NODE_ENV);
+console.log('✅ PORT:', config.PORT);
+console.log('🔧 BOT_TOKEN length:', config.BOT_TOKEN ? config.BOT_TOKEN.length : 'MISSING');
+console.log('🔧 ENCRYPTION_KEY length:', config.ENCRYPTION_KEY ? config.ENCRYPTION_KEY.length : 'MISSING');
+console.log('🔧 DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'NOT SET');
 
 if (!config.DATABASE_URL) {
-  console.error('❌ DATABASE_URL is required but not set');
-  console.error('💡 Check Railway environment variables: DATABASE_URL or RAILWAY_DATABASE_URL');
-  if (config.NODE_ENV === 'production') {
+  console.error('❌ DATABASE_URL not found — checking RAILWAY_DATABASE_URL...');
+  if (process.env.RAILWAY_DATABASE_URL) {
+    config.DATABASE_URL = cleanEnv(process.env.RAILWAY_DATABASE_URL);
+    console.log('🔧 Fallback: Using RAILWAY_DATABASE_URL');
+  } else {
+    console.error('💥 No valid database URL found. Exiting...');
     process.exit(1);
   }
 }
 
-// Webhook auto-fix for Railway
-if (config.NODE_ENV === 'production' && !config.WEBHOOK_URL.includes('https')) {
-  if (process.env.RAILWAY_STATIC_URL) {
-    config.WEBHOOK_URL = `https://${process.env.RAILWAY_STATIC_URL}`;
-    console.log('🔧 Auto-fixed WEBHOOK_URL for Railway:', config.WEBHOOK_URL);
-  } else {
-    console.warn('⚠️  WARNING: Production webhook URL is not HTTPS');
-  }
-}
+console.log('🔍 Final DATABASE_URL before app start =', config.DATABASE_URL ? config.DATABASE_URL.substring(0, 25) + '...' : 'undefined');
 
 module.exports = config;
