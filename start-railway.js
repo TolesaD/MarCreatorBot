@@ -1,71 +1,70 @@
-// Railway Startup Script - Fixed Path Version
+// start-railway.js - SAFE VERSION (No Variable Modification)
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
-console.log('🔧 CRITICAL: Fixed path to src/app.js');
+console.log('🔧 SAFE: No environment variable modification');
 
-// Function to strip quotes from environment variables
-function stripQuotes(value) {
-  if (typeof value === 'string') {
-    // Remove surrounding quotes if present
-    return value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
-  }
-  return value;
-}
+// Debug: Show actual environment state
+console.log('🔍 Environment Variable Analysis:');
+console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`   PORT: ${process.env.PORT || 8080}`);
+console.log(`   BOT_TOKEN length: ${process.env.BOT_TOKEN ? process.env.BOT_TOKEN.length : 'MISSING'}`);
+console.log(`   ENCRYPTION_KEY length: ${process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 'MISSING'}`);
+console.log(`   DATABASE_URL length: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 'MISSING'}`);
 
-// Process environment variables (strip quotes)
-process.env.BOT_TOKEN = stripQuotes(process.env.BOT_TOKEN);
-process.env.ENCRYPTION_KEY = stripQuotes(process.env.ENCRYPTION_KEY);
-process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
-process.env.MAIN_BOT_NAME = stripQuotes(process.env.MAIN_BOT_NAME);
-process.env.MAIN_BOT_USERNAME = stripQuotes(process.env.MAIN_BOT_USERNAME);
-
-console.log(`✅ NODE_ENV: ${process.env.NODE_ENV}`);
-console.log(`✅ PORT: ${process.env.PORT || 8080}`);
-
-// Debug: Show actual values (masked)
-console.log(`🔧 BOT_TOKEN length: ${process.env.BOT_TOKEN ? process.env.BOT_TOKEN.length : 'MISSING'}`);
-console.log(`🔧 ENCRYPTION_KEY length: ${process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 'MISSING'}`);
-console.log(`🔧 DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'MISSING'}`);
-
-// Check environment variables
+// Check for required variables WITHOUT modifying them
 const missingVars = [];
+const invalidVars = [];
 
 if (!process.env.BOT_TOKEN) {
   missingVars.push('BOT_TOKEN');
-  console.error('❌ BOT_TOKEN: Missing - Your main bot token from BotFather');
-} else {
-  console.log('✅ BOT_TOKEN: Set');
+} else if (process.env.BOT_TOKEN.length < 40) {
+  invalidVars.push(`BOT_TOKEN (too short: ${process.env.BOT_TOKEN.length} chars)`);
 }
 
 if (!process.env.ENCRYPTION_KEY) {
   missingVars.push('ENCRYPTION_KEY');
-  console.error('❌ ENCRYPTION_KEY: Missing - A 32-character random string for encryption');
-} else {
-  console.log('✅ ENCRYPTION_KEY: Set');
+} else if (process.env.ENCRYPTION_KEY.length < 40) {
+  invalidVars.push(`ENCRYPTION_KEY (too short: ${process.env.ENCRYPTION_KEY.length} chars)`);
 }
 
 if (!process.env.DATABASE_URL) {
   missingVars.push('DATABASE_URL');
-  console.error('❌ DATABASE_URL: Missing - PostgreSQL database URL (auto-provided by Railway)');
-} else {
-  console.log('✅ DATABASE_URL: Set');
+} else if (process.env.DATABASE_URL.length < 50) {
+  invalidVars.push(`DATABASE_URL (too short: ${process.env.DATABASE_URL.length} chars)`);
 }
 
+// Report issues
 if (missingVars.length > 0) {
-  console.error('\n💡 HOW TO FIX:');
-  console.error('   1. Railway automatically adds quotes to values with special characters');
-  console.error('   2. This code now automatically strips quotes');
-  console.error('   3. Check your Railway variables for any syntax issues');
-  console.error('   4. Missing variables: ' + missingVars.join(', '));
-  
+  console.error('❌ Missing required variables:', missingVars.join(', '));
+}
+
+if (invalidVars.length > 0) {
+  console.error('❌ Invalid variables (too short):', invalidVars.join(', '));
+  console.error('💡 This usually means Railway added quotes or formatting');
+  console.error('💡 Check your Railway variables - remove any extra quotes');
+}
+
+if (missingVars.length > 0 || invalidVars.length > 0) {
+  console.error('\n🚨 RAILWAY VARIABLE SETUP:');
+  console.error('   1. Go to Railway → Your Service → Settings → Variables');
+  console.error('   2. Check these variables have correct values:');
+  console.error('      - BOT_TOKEN: Should be ~46 characters (from BotFather)');
+  console.error('      - ENCRYPTION_KEY: Should be 44 characters (base64)');
+  console.error('      - DATABASE_URL: Should be ~91 characters');
+  console.error('   3. Remove any surrounding quotes from values');
+  console.error('   4. Redeploy after changes');
   process.exit(1);
 }
 
-console.log('✅ All environment variables are set');
+console.log('✅ All environment variables validated');
+console.log(`   BOT_TOKEN: ***${process.env.BOT_TOKEN.slice(-6)}`);
+console.log(`   ENCRYPTION_KEY: Valid (${process.env.ENCRYPTION_KEY.length} chars)`);
+console.log(`   DATABASE_URL: Valid (${process.env.DATABASE_URL.length} chars)`);
+
 console.log('🏃 Starting application from src/app.js...');
 
 try {
-  // FIXED: Correct path to your main application
+  // Start the application WITHOUT modifying environment variables
   require('./src/app.js');
   console.log('✅ Application started successfully!');
 } catch (error) {
