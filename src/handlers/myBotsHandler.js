@@ -14,35 +14,53 @@ const myBotsHandler = async (ctx) => {
     });
     
     console.log(`🔍 DEBUG: Found ${ownedBots.length} owned bots`);
+    ownedBots.forEach(bot => {
+      console.log(`   OWNED: ${bot.bot_name} (ID: ${bot.id})`);
+    });
     
-    // SIMPLIFIED: Get admin bots without complex includes
+    // Get admin records
     const adminRecords = await Admin.findAll({
       where: { admin_user_id: userId }
     });
     
     console.log(`🔍 DEBUG: Found ${adminRecords.length} admin records`);
+    adminRecords.forEach(record => {
+      console.log(`   ADMIN RECORD: Bot ID: ${record.bot_id}`);
+    });
     
-    // Get bot IDs from admin records
-    const adminBotIds = adminRecords.map(record => record.bot_id);
+    // Get bot IDs from admin records (excluding owned bots)
+    const adminBotIds = adminRecords
+      .map(record => record.bot_id)
+      .filter(botId => {
+        // EXCLUDE bots where user is already owner
+        const isOwner = ownedBots.some(ownedBot => ownedBot.id === botId);
+        if (isOwner) {
+          console.log(`   EXCLUDING bot ${botId} - user is owner`);
+        }
+        return !isOwner;
+      });
     
-    // Fetch the actual bot records - FIXED: Remove complex where clause
+    console.log(`🔍 DEBUG: Admin bot IDs after filtering: ${adminBotIds.join(', ')}`);
+    
+    // Fetch only non-owned admin bots
     const adminBots = adminBotIds.length > 0 ? await Bot.findAll({
       where: { 
         id: adminBotIds
       }
     }) : [];
     
-    // Filter out owned bots in JavaScript instead of SQL
-    const filteredAdminBots = adminBots.filter(bot => bot.owner_id !== userId);
+    console.log(`🔍 DEBUG: Found ${adminBots.length} admin-only bots`);
+    adminBots.forEach(bot => {
+      console.log(`   ADMIN: ${bot.bot_name} (ID: ${bot.id})`);
+    });
     
-    console.log(`🔍 DEBUG: Found ${filteredAdminBots.length} admin-only bots (after filtering)`);
+    // Combine - no duplicates possible now
+    const allBots = [...ownedBots, ...adminBots];
     
-    // Combine without duplicates
-    const allBots = [...ownedBots, ...filteredAdminBots];
-    
-    console.log(`🔍 DEBUG: Total unique bots in myBotsHandler: ${allBots.length}`);
+    console.log(`🔍 DEBUG: Final unique bots: ${allBots.length}`);
     allBots.forEach(bot => {
-      console.log(`   - ${bot.bot_name} (ID: ${bot.id}) - Owner: ${bot.owner_id === userId}`);
+      const isOwner = bot.owner_id === userId;
+      console.log(`   FINAL: ${bot.bot_name} (ID: ${bot.id}) - Owner: ${isOwner}`);
     });
     
     if (allBots.length === 0) {
