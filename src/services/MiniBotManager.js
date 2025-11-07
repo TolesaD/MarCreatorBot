@@ -320,41 +320,6 @@ class MiniBotManager {
     return await this.initializeAllBots();
   }
 
-  // ADD THIS NEW METHOD FOR DEBUGGING
-  async forceInitializeAllBotsDebug() {
-    console.log('🔄 FORCE DEBUG: Initializing all mini-bots with debug...');
-    
-    const { Bot } = require('../models');
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 DEBUG: Found ${activeBots.length} active bots in database`);
-    
-    for (const botRecord of activeBots) {
-      try {
-        console.log(`🔧 DEBUG: Attempting to initialize ${botRecord.bot_name}...`);
-        console.log(`   - Bot ID: ${botRecord.id}`);
-        console.log(`   - Bot Name: ${botRecord.bot_name}`);
-        console.log(`   - Is Active: ${botRecord.is_active}`);
-        
-        const token = botRecord.getDecryptedToken();
-        console.log(`   - Token available: ${!!token}`);
-        if (token) {
-          console.log(`   - Token preview: ${token.substring(0, 10)}...`);
-        }
-        
-        const success = await this.initializeBot(botRecord);
-        console.log(`   - Initialization result: ${success ? 'SUCCESS' : 'FAILED'}`);
-        
-      } catch (error) {
-        console.error(`💥 DEBUG: Error initializing ${botRecord.bot_name}:`, error.message);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    
-    this.debugActiveBots();
-  }
-
   getInitializationStatus() {
     return {
       isInitialized: this.isInitialized,
@@ -1276,7 +1241,7 @@ class MiniBotManager {
   checkAdminAccess = async (botId, userId) => {
     try {
       const bot = await Bot.findByPk(botId);
-      if (bot.owner_id == userId) return true; // Use loose comparison
+      if (bot.owner_id === userId) return true;
       
       const admin = await Admin.findOne({
         where: { bot_id: botId, admin_user_id: userId }
@@ -1291,7 +1256,7 @@ class MiniBotManager {
   checkOwnerAccess = async (botId, userId) => {
     try {
       const bot = await Bot.findByPk(botId);
-      return bot.owner_id == userId; // Use loose comparison
+      return bot.owner_id === userId;
     } catch (error) {
       return false;
     }
