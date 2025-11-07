@@ -361,16 +361,18 @@ class MetaBotCreator {
         }
       }
       
-      // CRITICAL FIX: Wait for database to be ready
+      // CRITICAL FIX: Wait longer for database to be fully ready
       console.log('⏳ Waiting for database to stabilize...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Step 2: Initialize mini-bots with robust error handling
+      console.log('🤖 CRITICAL: Starting mini-bot initialization...');
+      await this.initializeMiniBotsWithRetry();
       
       console.log('✅ MetaBot Creator initialized successfully');
-      
-      // NOTE: Mini-bots will be initialized AFTER main bot starts (see start() method)
-      
     } catch (error) {
       console.error('❌ Initialization failed:', error);
+      // Even if initialization fails, try to start the main bot
       console.log('⚠️  Continuing with main bot only...');
     }
   }
@@ -426,7 +428,7 @@ class MetaBotCreator {
   }
   
   start() {
-    console.log('🚀 Starting main bot FIRST...');
+    console.log('🚀 Starting main bot...');
     
     this.bot.launch({
       dropPendingUpdates: true,
@@ -444,20 +446,44 @@ class MetaBotCreator {
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
         
-        // CRITICAL FIX: Start mini-bots AFTER main bot is running
-        console.log('🔄 Starting mini-bots initialization in 3 seconds...');
-        setTimeout(() => {
-          this.initializeMiniBotsDelayed();
-        }, 3000);
-        
-        // Schedule health checks
+        // CRITICAL: Schedule periodic health checks and recovery
         if (config.NODE_ENV === 'production') {
-          this.scheduleHealthChecks();
+          setInterval(async () => {
+            console.log('🏥 Running scheduled health check...');
+            try {
+              const health = await healthCheck();
+              console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
+              
+              const miniBotHealth = MiniBotManager.healthCheck();
+              console.log(`🤖 Mini-bot Health: ${miniBotHealth.isHealthy ? '✅' : '❌'} - ${miniBotHealth.activeBots} active`);
+              
+              // CRITICAL FIX: Auto-recover if mini-bots are not initialized but should be
+              if (!miniBotHealth.isInitialized && health.bots.active > 0) {
+                console.log('🔄 AUTO-RECOVERY: Mini-bots not initialized but active bots exist in database - triggering reinitialization...');
+                MiniBotManager.forceReinitializeAllBots();
+              }
+            } catch (healthError) {
+              console.error('Health check failed:', healthError.message);
+            }
+          }, 300000);
+          
+          // Initial health check after 60 seconds
+          setTimeout(async () => {
+            console.log('🏥 Running initial health check...');
+            try {
+              const health = await healthCheck();
+              console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
+              MiniBotManager.healthCheck();
+            } catch (error) {
+              console.error('Initial health check failed:', error.message);
+            }
+          }, 60000);
         }
       })
       .catch(error => {
         console.error('❌ Failed to start main bot:');
         console.error('   Error:', error.message);
+        console.error('   Full error:', error);
         console.error('💡 Possible causes:');
         console.error('   1. Invalid bot token');
         console.error('   2. Network issues blocking Telegram API');
@@ -469,85 +495,6 @@ class MetaBotCreator {
     // Enable graceful stop
     process.once('SIGINT', () => this.shutdown());
     process.once('SIGTERM', () => this.shutdown());
-  }
-
-  // ADD THIS NEW METHOD
-  async initializeMiniBotsDelayed() {
-    try {
-      console.log('🤖 CRITICAL: Starting mini-bot initialization AFTER main bot...');
-      
-      const { Bot } = require('./models');
-      const activeBots = await Bot.findAll({ where: { is_active: true } });
-      
-      console.log(`📊 Found ${activeBots.length} active bots to initialize`);
-      
-      if (activeBots.length === 0) {
-        console.log('ℹ️ No active bots found to initialize');
-        return;
-      }
-      
-      let successCount = 0;
-      
-      for (const botRecord of activeBots) {
-        try {
-          console.log(`🔄 Initializing: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-          const success = await MiniBotManager.initializeBot(botRecord);
-          if (success) {
-            console.log(`✅ Successfully initialized: ${botRecord.bot_name}`);
-            successCount++;
-          } else {
-            console.log(`❌ Failed to initialize: ${botRecord.bot_name}`);
-          }
-          
-          // Small delay between bot initializations
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (botError) {
-          console.error(`💥 Error initializing ${botRecord.bot_name}:`, botError.message);
-        }
-      }
-      
-      console.log(`🎉 Mini-bot initialization completed: ${successCount}/${activeBots.length} successful`);
-      
-      // Debug: Check active bots in MiniBotManager
-      MiniBotManager.debugActiveBots();
-      
-    } catch (error) {
-      console.error('❌ Mini-bot initialization failed:', error);
-    }
-  }
-
-  // Add this new method for health checks
-  scheduleHealthChecks() {
-    setInterval(async () => {
-      console.log('🏥 Running scheduled health check...');
-      try {
-        const health = await healthCheck();
-        console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
-        
-        const miniBotHealth = MiniBotManager.healthCheck();
-        console.log(`🤖 Mini-bot Health: ${miniBotHealth.isHealthy ? '✅' : '❌'} - ${miniBotHealth.activeBots} active`);
-        
-        // Auto-recover if mini-bots are not initialized but should be
-        if (!miniBotHealth.isInitialized && health.bots.active > 0) {
-          console.log('🔄 AUTO-RECOVERY: Mini-bots not initialized but active bots exist in database - triggering reinitialization...');
-          MiniBotManager.forceReinitializeAllBots();
-        }
-      } catch (healthError) {
-        console.error('Health check failed:', healthError.message);
-      }
-    }, 300000);
-    
-    // Initial health check after 60 seconds
-    setTimeout(async () => {
-      console.log('🏥 Running initial health check...');
-      try {
-        const health = await healthCheck();
-        console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
-        MiniBotManager.healthCheck();
-      } catch (error) {
-        console.error('Initial health check failed:', error.message);
-      }
-    }, 60000);
   }
   
   async shutdown() {
