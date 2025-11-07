@@ -1,9 +1,7 @@
-# .cpanel.yml - Yegara.com Deployment Configuration
+# .cpanel.yml - Simplified for Node.js App
 ---
 deployment:
   tasks:
     - export DEPLOYPATH=/home/maroseff/public_html/marcreator/
     - /bin/cp -R * $DEPLOYPATH
-    - cd $DEPLOYPATH
-    - npm install --production
-    - echo "✅ Deployment completed successfully"
+    - echo "✅ Files deployed - Node.js App handles npm install"
