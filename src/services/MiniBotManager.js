@@ -149,82 +149,89 @@ class MiniBotManager {
     console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
-  async initializeBot(botRecord) {
-    try {
-      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
-      
-      if (this.activeBots.has(botRecord.id)) {
-        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
-        await this.stopBot(botRecord.id);
-      }
-      
-      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
-      const token = botRecord.getDecryptedToken();
-      if (!token) {
-        console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      if (!this.isValidBotToken(token)) {
-        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
-      
-      const bot = new Telegraf(token, {
-        handlerTimeout: 90000,
-        telegram: { 
-          apiRoot: 'https://api.telegram.org',
-          agent: null
-        }
-      });
-      
-      bot.context.metaBotInfo = {
-        mainBotId: botRecord.id,
-        botId: botRecord.bot_id,
-        botName: botRecord.bot_name,
-        botUsername: botRecord.bot_username,
-        botRecord: botRecord
-      };
-      
-      this.setupHandlers(bot);
-      
-      console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-      
-      const launchPromise = bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-      });
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Bot launch timeout')), 30000);
-      });
-      
-      await Promise.race([launchPromise, timeoutPromise]);
-      
-      console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
-      
-      await this.setBotCommands(bot, token);
-      
-      this.activeBots.set(botRecord.id, { 
-        instance: bot, 
-        record: botRecord,
-        token: token,
-        launchedAt: new Date(),
-        status: 'active'
-      });
-      
-      console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-      console.log(`📊 Current active bots count: ${this.activeBots.size}`);
-      
-      return true;
-    } catch (error) {
-      console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-      this.activeBots.delete(botRecord.id);
+async initializeBot(botRecord) {
+  try {
+    console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
+    
+    if (this.activeBots.has(botRecord.id)) {
+      console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+      await this.stopBot(botRecord.id);
+    }
+    
+    console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
+    const token = botRecord.getDecryptedToken();
+    if (!token) {
+      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
       return false;
     }
+    
+    if (!this.isValidBotToken(token)) {
+      console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
+      return false;
+    }
+    
+    console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
+    
+    const bot = new Telegraf(token, {
+      handlerTimeout: 120000, // Increased timeout
+      telegram: { 
+        apiRoot: 'https://api.telegram.org',
+        agent: null
+      }
+    });
+    
+    bot.context.metaBotInfo = {
+      mainBotId: botRecord.id,
+      botId: botRecord.bot_id,
+      botName: botRecord.bot_name,
+      botUsername: botRecord.bot_username,
+      botRecord: botRecord
+    };
+    
+    this.setupHandlers(bot);
+    
+    console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+    
+    // FIX: Better launch with longer timeout and retry
+    const launchPromise = bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+    });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Bot launch timeout after 60 seconds')), 60000); // Increased to 60 seconds
+    });
+    
+    await Promise.race([launchPromise, timeoutPromise]);
+    
+    console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
+    
+    await this.setBotCommands(bot, token);
+    
+    this.activeBots.set(botRecord.id, { 
+      instance: bot, 
+      record: botRecord,
+      token: token,
+      launchedAt: new Date(),
+      status: 'active'
+    });
+    
+    console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+    console.log(`📊 Current active bots count: ${this.activeBots.size}`);
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
+    
+    // Debug: Check if it's a token issue
+    if (error.message.includes('ETELEGRAM') || error.message.includes('401')) {
+      console.error(`🔑 TOKEN ISSUE: Invalid token for ${botRecord.bot_name}`);
+    }
+    
+    this.activeBots.delete(botRecord.id);
+    return false;
   }
+}
 
   isValidBotToken(token) {
     if (!token || typeof token !== 'string') {
@@ -1238,29 +1245,6 @@ class MiniBotManager {
     }
   }
   
-  checkAdminAccess = async (botId, userId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      if (bot.owner_id === userId) return true;
-      
-      const admin = await Admin.findOne({
-        where: { bot_id: botId, admin_user_id: userId }
-      });
-      
-      return !!admin;
-    } catch (error) {
-      return false;
-    }
-  }
-  
-  checkOwnerAccess = async (botId, userId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      return bot.owner_id === userId;
-    } catch (error) {
-      return false;
-    }
-  }
   
   stopBot = async (botId) => {
     try {
