@@ -345,65 +345,121 @@ class MetaBotCreator {
     console.log('✅ Admin callbacks registered');
   }
   
-async initialize() {
-  try {
-    console.log('🔄 CRITICAL: Starting MetaBot Creator initialization...');
+  async initialize() {
+    try {
+      console.log('🔄 CRITICAL: Starting MetaBot Creator initialization...');
+      
+      // Step 1: Connect to database with retries
+      console.log('🗄️ Connecting to database...');
+      const dbConnected = await connectDB();
+      
+      if (!dbConnected) {
+        console.error('❌ Database connection failed');
+        if (config.NODE_ENV === 'production') {
+          console.error('💥 Cannot continue without database in production');
+          process.exit(1);
+        }
+      }
+      
+      console.log('✅ MetaBot Creator initialized successfully');
+      
+    } catch (error) {
+      console.error('❌ Initialization failed:', error);
+      console.log('⚠️  Continuing with main bot only...');
+    }
+  }
+  
+  async initializeMiniBotsWithRetry(maxRetries = 3) {
+    let retries = 0;
     
-    // Step 1: Connect to database with retries
-    console.log('🗄️ Connecting to database...');
-    const dbConnected = await connectDB();
-    
-    if (!dbConnected) {
-      console.error('❌ Database connection failed');
-      if (config.NODE_ENV === 'production') {
-        console.error('💥 Cannot continue without database in production');
-        process.exit(1);
+    while (retries < maxRetries) {
+      try {
+        console.log(`\n🔄 Mini-bot initialization attempt ${retries + 1}/${maxRetries}`);
+        
+        const successCount = await MiniBotManager.initializeAllBots();
+        
+        if (successCount > 0) {
+          console.log(`✅ ${successCount} mini-bots initialized successfully`);
+          return successCount;
+        } else {
+          console.log('ℹ️ No active mini-bots found to initialize');
+          
+          // Check if this might be a database timing issue
+          try {
+            const { Bot } = require('./models');
+            const activeBots = await Bot.findAll({ where: { is_active: true } });
+            console.log(`📊 Database shows ${activeBots.length} active bots`);
+            
+            if (activeBots.length > 0) {
+              console.log('⚠️ Database has active bots but MiniBotManager found 0 - retrying...');
+              retries++;
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              continue;
+            }
+          } catch (modelError) {
+            console.log('📊 Skipping database check due to model loading issue');
+          }
+          
+          // No active bots, this is normal
+          return 0;
+        }
+      } catch (error) {
+        console.error(`❌ Mini-bot initialization attempt ${retries + 1} failed:`, error.message);
+        retries++;
+        
+        if (retries < maxRetries) {
+          const delay = 5000 * retries;
+          console.log(`🔄 Retrying in ${delay/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error('💥 All mini-bot initialization attempts failed');
+          console.log('⚠️  Mini-bots will not be available until next restart or manual reinitialization');
+        }
       }
     }
-    
-    console.log('✅ MetaBot Creator initialized successfully');
-    
-  } catch (error) {
-    console.error('❌ Initialization failed:', error);
-    console.log('⚠️  Continuing with main bot only...');
   }
-}
-
-start() {
-  console.log('🚀 Starting main bot FIRST...');
   
-  this.bot.launch({
-    dropPendingUpdates: true,
-    allowedUpdates: ['message', 'callback_query']
-  })
-    .then(() => {
-      console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-      console.log('========================================');
-      console.log('📱 Main Bot: Manages bot creation only');
-      console.log('🤖 Mini-bots: Handle user messages & management');
-      console.log('💬 Send /start to see main menu');
-      console.log('🔧 Use /createbot to create new bots');
-      console.log('📋 Use /mybots to view your bots');
-      console.log('🔄 Use /reinit to restart mini-bots (owner only)');
-      console.log('🔒 Legal: /privacy & /terms available');
-      console.log('========================================');
-      
-      // CRITICAL FIX: Start mini-bots AFTER main bot is running with delay
-      console.log('🔄 Starting mini-bots initialization in 10 seconds...');
-      setTimeout(() => {
-        this.initializeMiniBotsWithRetry();
-      }, 10000);
-      
+  start() {
+    console.log('🚀 Starting main bot FIRST...');
+    
+    this.bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query']
     })
-    .catch(error => {
-      console.error('❌ Failed to start main bot:');
-      console.error('   Error:', error.message);
-      process.exit(1);
-    });
-  
-  process.once('SIGINT', () => this.shutdown());
-  process.once('SIGTERM', () => this.shutdown());
-}
+      .then(() => {
+        console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
+        console.log('========================================');
+        console.log('📱 Main Bot: Manages bot creation only');
+        console.log('🤖 Mini-bots: Handle user messages & management');
+        console.log('💬 Send /start to see main menu');
+        console.log('🔧 Use /createbot to create new bots');
+        console.log('📋 Use /mybots to view your bots');
+        console.log('🔄 Use /reinit to restart mini-bots (owner only)');
+        console.log('🔒 Legal: /privacy & /terms available');
+        console.log('========================================');
+        
+        // CRITICAL FIX: Start mini-bots AFTER main bot is running
+        console.log('🔄 Starting mini-bots initialization in 5 seconds...');
+        setTimeout(async () => {
+          try {
+            console.log('🤖 CRITICAL: Starting mini-bot initialization AFTER main bot...');
+            await this.initializeMiniBotsWithRetry();
+          } catch (error) {
+            console.error('❌ Mini-bot initialization failed:', error);
+          }
+        }, 5000);
+        
+      })
+      .catch(error => {
+        console.error('❌ Failed to start main bot:');
+        console.error('   Error:', error.message);
+        process.exit(1);
+      });
+    
+    // Enable graceful stop
+    process.once('SIGINT', () => this.shutdown());
+    process.once('SIGTERM', () => this.shutdown());
+  }
   
   async shutdown() {
     console.log('\n🛑 Shutting down gracefully...');
