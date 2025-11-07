@@ -8,7 +8,8 @@
     "dev": "nodemon src/app.js",
     "test": "node test-local.js",
     "test:quick": "node test-quick.js",
-    "setup": "node setup-local.js"
+    "setup": "node setup-local.js",
+    "cpanel": "node src/app.js"
   },
   "keywords": [
     "telegram",
@@ -24,9 +25,10 @@
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "dotenv": "^16.4.5",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "axios": "^1.6.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=14.0.0"
   }
 }
