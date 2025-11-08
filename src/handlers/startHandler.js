@@ -1,5 +1,4 @@
-﻿// src/handlers/startHandler.js
-const { Markup } = require('telegraf');
+﻿const { Markup } = require('telegraf');
 const User = require('../models/User');
 
 const startHandler = async (ctx) => {
@@ -17,6 +16,7 @@ const startHandler = async (ctx) => {
     });
 
     const welcomeMessage = `🤖 *Welcome to MarCreatorBot!*\n\n` +
+
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
       `✨ *Create & Manage Your Own Bots:*\n` +
       `• 🚀 Create mini-bots without coding\n` +
@@ -39,8 +39,8 @@ const startHandler = async (ctx) => {
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
       [
-        Markup.button.callback('📊 My Bots Dashboard', 'my_bots'),
-        Markup.button.callback('❓ Help Guide', 'help')
+        Markup.button.callback('❓ Help Guide', 'help'),
+        Markup.button.callback('⭐ Features', 'features')
       ],
       [
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
