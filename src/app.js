@@ -1,4 +1,4 @@
-﻿// src/app.js - FIXED AUTOMATIC INITIALIZATION
+﻿// src/app.js - COMPLETE FIXED VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -10,18 +10,11 @@ const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
 if (isCpanel) {
   console.log('✅ Running on Yegara.com cPanel');
   process.env.NODE_ENV = 'production';
-  
-  const fs = require('fs');
-  const path = require('path');
-  const logDir = path.join(process.cwd(), 'logs');
-  if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-  }
 }
 
 const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/environment');
-const { connectDB, healthCheck } = require('../database/db');
+const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
@@ -32,7 +25,6 @@ class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN) {
       console.error('❌ BOT_TOKEN is not set');
-      console.error('💡 Set BOT_TOKEN in cPanel environment variables');
       process.exit(1);
     }
     
@@ -57,82 +49,30 @@ class MetaBotCreator {
     
     this.bot.start(startHandler);
     this.bot.help(helpHandler);
-    
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
     
+    // DEBUG COMMANDS
     this.bot.command('debug_minibots', async (ctx) => {
       try {
         await ctx.reply('🔄 Debugging mini-bots...');
-        
         const status = MiniBotManager.getInitializationStatus();
         let message = `🔍 *Mini-bot Debug Info*\n\n`;
         message += `*Status:* ${status.status}\n`;
         message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
         message += `*Active Bots:* ${status.activeBots}\n`;
-        message += `*Attempts:* ${status.attempts}/${status.maxAttempts}\n\n`;
-        
-        try {
-          const { Bot } = require('./models');
-          const activeBots = await Bot.findAll({ where: { is_active: true } });
-          message += `*Database Active Bots:* ${activeBots.length}\n`;
-          
-          if (activeBots.length > 0) {
-            activeBots.forEach((bot, index) => {
-              message += `  ${index + 1}. ${bot.bot_name} (ID: ${bot.id})\n`;
-            });
-          }
-        } catch (dbError) {
-          message += `*Database Error:* ${dbError.message}\n`;
-        }
-        
-        await ctx.replyWithMarkdown(message);
-        
-        await ctx.reply('🔄 Forcing mini-bot reinitialization...');
-        const result = await MiniBotManager.forceReinitializeAllBots();
-        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
-        
-      } catch (error) {
-        console.error('Debug command error:', error);
-        await ctx.reply('❌ Debug command failed: ' + error.message);
-      }
-    });
-    
-    this.bot.command('test_minibots', async (ctx) => {
-      try {
-        await ctx.reply('🧪 Testing mini-bot communication...');
-        
-        MiniBotManager.debugActiveBots();
         
         const { Bot } = require('./models');
         const activeBots = await Bot.findAll({ where: { is_active: true } });
+        message += `*Database Active Bots:* ${activeBots.length}\n`;
         
-        if (activeBots.length === 0) {
-          await ctx.reply('❌ No active bots found in database.');
-          return;
-        }
-        
-        let testResults = `🧪 *Mini-bot Test Results*\n\n`;
-        
-        for (const botRecord of activeBots) {
-          const botData = MiniBotManager.activeBots.get(botRecord.id);
-          if (botData) {
-            try {
-              const botInfo = await botData.instance.telegram.getMe();
-              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
-            } catch (error) {
-              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
-            }
-          } else {
-            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
-          }
-        }
-        
-        await ctx.replyWithMarkdown(testResults);
-        
+        await ctx.replyWithMarkdown(message);
+        await ctx.reply('🔄 Forcing mini-bot reinitialization...');
+        const result = await MiniBotManager.forceReinitializeAllBots();
+        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
       } catch (error) {
-        console.error('Test command error:', error);
-        await ctx.reply('❌ Test command failed: ' + error.message);
+        console.error('Debug command error:', error);
+        await ctx.reply('❌ Debug command failed.');
       }
     });
     
@@ -143,7 +83,6 @@ class MetaBotCreator {
           await ctx.reply('❌ Only bot owner can use this command.');
           return;
         }
-        
         await ctx.reply('🔄 Forcing reinitialization of all mini-bots...');
         const result = await MiniBotManager.forceReinitializeAllBots();
         await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
@@ -263,25 +202,14 @@ class MetaBotCreator {
   privacyHandler = async (ctx) => {
     try {
       const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
-        `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*What We Collect:*\n` +
         `• Your Telegram user ID and basic profile info\n` +
         `• Bot tokens (encrypted with AES-256)\n` +
-        `• Message data for bot functionality\n` +
-        `• Usage statistics for service improvement\n\n` +
-        `*How We Use Your Data:*\n` +
-        `• To operate and maintain your mini-bots\n` +
-        `• To forward messages between users and admins\n` +
-        `• To provide bot management features\n` +
-        `• For service analytics and improvements\n\n` +
+        `• Message data for bot functionality\n\n` +
         `*Data Protection:*\n` +
         `• Bot tokens are encrypted at rest\n` +
-        `• Database connections use SSL/TLS\n` +
-        `• Regular security updates\n\n` +
-        `*Data Sharing:*\n` +
-        `We do NOT sell, trade, or share your personal data with third parties.\n\n` +
-        `@${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
-        `By using this service, you agree to our privacy practices.`;
+        `• Database connections use SSL/TLS\n\n` +
+        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for concerns.`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📋 Terms of Service', 'terms_of_service')],
@@ -298,60 +226,20 @@ class MetaBotCreator {
       }
     } catch (error) {
       console.error('Privacy handler error:', error);
-      await ctx.reply(
-        `🔒 Privacy Policy\n\n` +
-        `We protect your data. We collect only necessary information to provide the service.\n\n` +
-        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for concerns.`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('🔙 Main Menu', 'start')]
-        ])
-      );
+      await ctx.reply('🔒 Privacy Policy - We protect your data.');
     }
   }
 
   termsHandler = async (ctx) => {
     try {
       const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
-        `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
-        `*Acceptance of Terms:*\n` +
-        `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
         `*Service Description:*\n` +
-        `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
+        `MarCreatorBot allows users to create and manage Telegram mini-bots.\n\n` +
         `*User Responsibilities:*\n` +
         `• You must own or have permission to use bot tokens\n` +
         `• You are responsible for your mini-bots' actions\n` +
-        `• You must comply with Telegram's Terms of Service\n` +
-        `• You must not use the service for illegal activities\n\n` +
-        `*Prohibited Uses:*\n` +
-        `• Spamming, harassment, or abuse\n` +
-        `• Illegal or fraudulent activities\n` +
-        `• Violating Telegram's Terms of Service\n` +
-        `• Attempting to disrupt the service\n\n` +
-        `*Service Limitations:*\n` +
-        `• Maximum ${config.MAX_BOTS_PER_USER || 10} bots per user\n` +
-        `• Rate limiting applies to prevent abuse\n` +
-        `• Service availability is not guaranteed\n` +
-        `• Features may change without notice\n\n` +
-        `*Data and Privacy:*\n` +
-        `• We encrypt your bot tokens\n` +
-        `• We store minimal necessary data\n` +
-        `• See /privacy for full details\n\n` +
-        `*Termination:*\n` +
-        `We may suspend accounts for:\n` +
-        `• Terms of Service violations\n` +
-        `• Abuse of the service\n` +
-        `• Illegal activities\n\n` +
-        `*Disclaimer:*\n` +
-        `Service provided "as is" without warranties. We're not liable for:\n` +
-        `• Bot downtime or service interruptions\n` +
-        `• Data loss or corruption\n` +
-        `• Actions of your mini-bots\n` +
-        `• Third-party service issues\n\n` +
-        `*Changes to Terms:*\n` +
-        `We may update these terms with reasonable notice.\n\n` +
-        `*Contact:*\n` +
-        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
-        `By using this service, you agree to these terms.`;
+        `• You must comply with Telegram's Terms of Service\n\n` +
+        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for questions.`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('🔒 Privacy Policy', 'privacy_policy')],
@@ -368,14 +256,7 @@ class MetaBotCreator {
       }
     } catch (error) {
       console.error('Terms handler error:', error);
-      await ctx.reply(
-        `📋 Terms of Service\n\n` +
-        `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorBotSupport'} for questions.`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('🔙 Main Menu', 'start')]
-        ])
-      );
+      await ctx.reply('📋 Terms of Service - Use responsibly.');
     }
   }
   
@@ -412,43 +293,34 @@ class MetaBotCreator {
   async initialize() {
     try {
       console.log('🔄 CRITICAL: Starting MetaBot Creator initialization...');
-      
       console.log('🗄️ Connecting to database...');
-      const dbConnected = await connectDB();
-      
-      if (!dbConnected) {
-        console.error('❌ Database connection failed');
-        if (config.NODE_ENV === 'production') {
-          console.error('💥 Cannot continue without database in production');
-          process.exit(1);
-        }
-      }
-      
+      await connectDB();
       console.log('✅ MetaBot Creator initialized successfully');
-      
     } catch (error) {
       console.error('❌ Initialization failed:', error);
-      console.log('⚠️  Continuing with main bot only...');
     }
   }
   
-  async initializeMiniBots() {
+  async startMiniBotsAutomatically() {
+    console.log('\n🚀 AUTOMATIC: Starting mini-bots initialization...');
+    console.log('============================================');
+    
     try {
-      console.log('\n🚀 CRITICAL: Starting automatic mini-bot initialization...');
-      console.log('==================================================');
-      
-      // Wait a bit more for everything to be ready
+      // Wait for main bot to be fully ready
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       const result = await MiniBotManager.initializeAllBots();
       
-      console.log(`🎉 Automatic mini-bot initialization completed: ${result} bots started`);
-      console.log('==================================================\n');
+      if (result > 0) {
+        console.log(`✅ AUTOMATIC: ${result} mini-bots started successfully`);
+      } else {
+        console.log('ℹ️ AUTOMATIC: No active mini-bots found to start');
+      }
       
+      console.log('============================================\n');
       return result;
     } catch (error) {
-      console.error('❌ Automatic mini-bot initialization failed:', error);
-      console.log('⚠️  Mini-bots will need to be started manually with /reinit');
+      console.error('❌ AUTOMATIC: Mini-bot initialization failed:', error.message);
       return 0;
     }
   }
@@ -456,6 +328,7 @@ class MetaBotCreator {
   start() {
     console.log('🚀 Starting main bot FIRST...');
     
+    // Start main bot
     this.bot.launch({
       dropPendingUpdates: true,
       allowedUpdates: ['message', 'callback_query']
@@ -463,31 +336,29 @@ class MetaBotCreator {
       .then(() => {
         console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
         console.log('========================================');
-        console.log('📱 Main Bot: Manages bot creation only');
-        console.log('🤖 Mini-bots: Handle user messages & management');
+        console.log('📱 Main Bot: Manages bot creation');
+        console.log('🤖 Mini-bots: Handle user messages');
         console.log('💬 Send /start to see main menu');
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
-        console.log('🔄 Use /reinit to restart mini-bots (owner only)');
-        console.log('🔒 Legal: /privacy & /terms available');
+        console.log('🔄 Use /reinit to restart mini-bots');
         console.log('========================================');
         
-        // CRITICAL FIX: Start mini-bots automatically after main bot is running
-        console.log('🔄 Starting automatic mini-bot initialization in 3 seconds...');
+        // CRITICAL: Start mini-bots automatically after main bot is running
+        console.log('🔄 AUTOMATIC: Starting mini-bots in 3 seconds...');
+        
+        // Use a more reliable approach
         setTimeout(() => {
-          this.initializeMiniBots().then(result => {
-            if (result > 0) {
-              console.log(`✅ ${result} mini-bots started automatically`);
-            } else {
-              console.log('⚠️ No mini-bots started automatically. Use /reinit to start them manually.');
+          this.startMiniBotsAutomatically().then(result => {
+            if (result === 0) {
+              console.log('💡 TIP: Use /reinit to manually start mini-bots if needed');
             }
           });
         }, 3000);
         
       })
       .catch(error => {
-        console.error('❌ Failed to start main bot:');
-        console.error('   Error:', error.message);
+        console.error('❌ Failed to start main bot:', error.message);
         process.exit(1);
       });
     
@@ -509,18 +380,18 @@ class MetaBotCreator {
     for (const botId of activeBots) {
       try {
         await MiniBotManager.stopBot(botId);
-        console.log(`✅ Stopped mini-bot: ${botId}`);
       } catch (error) {
         console.error(`❌ Failed to stop mini-bot ${botId}:`, error);
       }
     }
     
     MiniBotManager.activeBots.clear();
-    console.log('👋 All bots stopped successfully');
+    console.log('👋 All bots stopped');
     process.exit(0);
   }
 }
 
+// Start the application
 async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
@@ -537,6 +408,7 @@ async function startApplication() {
   }
 }
 
+// Only start if this is the main module
 if (require.main === module) {
   startApplication();
 }
