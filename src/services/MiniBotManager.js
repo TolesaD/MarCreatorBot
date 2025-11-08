@@ -182,7 +182,8 @@ async initializeBot(botRecord) {
       botRecord: botRecord
     };
     
-    this.setupHandlers(bot);
+    // Set default commands for new users
+    await this.setBotCommands(bot, token);
     
     console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
     
@@ -259,52 +260,95 @@ async initializeBot(botRecord) {
     return isValid;
   }
   
-  async setBotCommands(bot, token) {
-    try {
-      console.log('🔄 Setting bot commands for menu...');
-      await bot.telegram.setMyCommands([
-        { command: 'start', description: '🚀 Start the bot' },
-        { command: 'dashboard', description: '📊 Admin dashboard' },
-        { command: 'messages', description: '📨 View user messages' },
-        { command: 'broadcast', description: '📢 Send broadcast' },
-        { command: 'stats', description: '📈 View statistics' },
-        { command: 'admins', description: '👥 Manage admins' },
-        { command: 'help', description: '❓ Get help' }
-      ]);
-      console.log('✅ Bot menu commands set successfully');
-    } catch (error) {
-      console.error('❌ Failed to set bot commands:', error.message);
+// In MiniBotManager.js - Replace the setBotCommands method:
+
+async setBotCommands(bot, token, userId = null) {
+  try {
+    console.log('🔄 Setting bot commands for menu...');
+    
+    // Default commands for regular users
+    const userCommands = [
+      { command: 'start', description: '🚀 Start the bot' },
+      { command: 'help', description: '❓ Get help' }
+    ];
+    
+    // Admin commands for bot owners and admins
+    const adminCommands = [
+      { command: 'start', description: '🚀 Start the bot' },
+      { command: 'dashboard', description: '📊 Admin dashboard' },
+      { command: 'messages', description: '📨 View user messages' },
+      { command: 'broadcast', description: '📢 Send broadcast' },
+      { command: 'stats', description: '📈 View statistics' },
+      { command: 'admins', description: '👥 Manage admins' },
+      { command: 'help', description: '❓ Get help' }
+    ];
+    
+    if (userId) {
+      // Set commands for specific user
+      const isAdmin = await this.checkAdminAccess(bot.context.metaBotInfo.mainBotId, userId);
+      
+      if (isAdmin) {
+        await bot.telegram.setMyCommands(adminCommands, {
+          scope: {
+            type: 'chat',
+            chat_id: userId
+          }
+        });
+        console.log(`✅ Admin commands set for user ${userId}`);
+      } else {
+        await bot.telegram.setMyCommands(userCommands, {
+          scope: {
+            type: 'chat',
+            chat_id: userId
+          }
+        });
+        console.log(`✅ User commands set for user ${userId}`);
+      }
+    } else {
+      // Set default commands for all users
+      await bot.telegram.setMyCommands(userCommands);
+      console.log('✅ Default user commands set for all users');
     }
+  } catch (error) {
+    console.error('❌ Failed to set bot commands:', error.message);
   }
+}
   
-  setupHandlers = (bot) => {
-    console.log('🔄 Setting up handlers for bot...');
+setupHandlers = (bot) => {
+  console.log('🔄 Setting up handlers for bot...');
+  
+  // Add middleware to set role-based commands
+  bot.use(async (ctx, next) => {
+    ctx.miniBotManager = this;
     
-    bot.use(async (ctx, next) => {
-      ctx.miniBotManager = this;
-      return next();
-    });
+    // Set appropriate commands for this user
+    if (ctx.from && ctx.metaBotInfo) {
+      await this.setBotCommands(bot, null, ctx.from.id);
+    }
     
-    bot.start((ctx) => this.handleStart(ctx));
-    bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
-    bot.command('messages', (ctx) => this.handleMessagesCommand(ctx));
-    bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
-    bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
-    bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
-    bot.command('help', (ctx) => this.handleHelp(ctx));
-    bot.on('text', (ctx) => this.handleTextMessage(ctx));
-    
-    bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
-    bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
-    bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
-    bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
-    
-    bot.catch((error, ctx) => {
-      console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
-    });
-    
-    console.log('✅ Bot handlers setup complete');
-  }
+    return next();
+  });
+  
+  bot.start((ctx) => this.handleStart(ctx));
+  bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
+  bot.command('messages', (ctx) => this.handleMessagesCommand(ctx));
+  bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
+  bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
+  bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
+  bot.command('help', (ctx) => this.handleHelp(ctx));
+  bot.on('text', (ctx) => this.handleTextMessage(ctx));
+  
+  bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
+  bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
+  bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
+  bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
+  
+  bot.catch((error, ctx) => {
+    console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
+  });
+  
+  console.log('✅ Bot handlers setup complete');
+}
 
   getBotInstanceByDbId = (dbId) => {
     const botData = this.activeBots.get(parseInt(dbId));
@@ -382,36 +426,39 @@ async initializeBot(botRecord) {
     };
   }
 
-  handleStart = async (ctx) => {
-    try {
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name}`);
-      
-      await UserLog.upsert({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        last_interaction: new Date(),
-        first_interaction: new Date(),
-        interaction_count: 1
-      });
-      
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-      
-      if (isAdmin) {
-        await this.showAdminDashboard(ctx, metaBotInfo);
-      } else {
-        await this.showUserWelcome(ctx, metaBotInfo);
-      }
-      
-    } catch (error) {
-      console.error('Start handler error:', error);
-      await ctx.reply('Welcome! Send me a message.');
+ handleStart = async (ctx) => {
+  try {
+    const { metaBotInfo } = ctx;
+    const user = ctx.from;
+    
+    console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name}`);
+    
+    // Ensure commands are set for this user
+    await this.setBotCommands(ctx.telegram, null, user.id);
+    
+    await UserLog.upsert({
+      bot_id: metaBotInfo.mainBotId,
+      user_id: user.id,
+      user_username: user.username,
+      user_first_name: user.first_name,
+      last_interaction: new Date(),
+      first_interaction: new Date(),
+      interaction_count: 1
+    });
+    
+    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+    
+    if (isAdmin) {
+      await this.showAdminDashboard(ctx, metaBotInfo);
+    } else {
+      await this.showUserWelcome(ctx, metaBotInfo);
     }
+    
+  } catch (error) {
+    console.error('Start handler error:', error);
+    await ctx.reply('Welcome! Send me a message.');
   }
+}
   
   showAdminDashboard = async (ctx, metaBotInfo) => {
     try {
@@ -539,25 +586,54 @@ async initializeBot(botRecord) {
     }
   }
   
-  handleHelp = async (ctx) => {
-    try {
-      const helpMessage = `🤖 *Help & Support*\n\n` +
-        `*For Users:*\n` +
-        `• Send any message to contact admins\n\n` +
-        `*For Admins:*\n` +
-        `• Use /dashboard for admin features\n` +
-        `• /messages - View user messages\n` +
-        `• /broadcast - Send broadcasts\n` +
-        `• /stats - View statistics\n` +
-        `• Use menu (/) button for quick access\n\n` +
+handleHelp = async (ctx) => {
+  try {
+    const { metaBotInfo } = ctx;
+    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, ctx.from.id);
+    
+    let helpMessage;
+    
+    if (isAdmin) {
+      // Admin help content
+      helpMessage = `🤖 *Admin Help & Support*\n\n` +
+        `*Available Commands:*\n` +
+        `/dashboard - 📊 Admin dashboard with quick stats\n` +
+        `/messages - 📨 View and reply to user messages\n` +
+        `/broadcast - 📢 Send message to all users\n` +
+        `/stats - 📈 View bot statistics\n` +
+        `/admins - 👥 Manage admin team (owners only)\n` +
+        `/help - ❓ This help message\n\n` +
+        `*Quick Tips:*\n` +
+        `• Click notification buttons to reply instantly\n` +
+        `• Use broadcast for important announcements\n` +
+        `• Add co-admins to help manage messages\n\n` +
         `*Need help?* Contact @MarCreatorSupportBot`;
-      
-      await ctx.replyWithMarkdown(helpMessage);
-    } catch (error) {
-      console.error('Help command error:', error);
-      await ctx.reply('Use /start to begin.');
+    } else {
+      // Regular user help content
+      helpMessage = `🤖 *Help & Support*\n\n` +
+        `*How to use this bot:*\n` +
+        `• Send any message to contact our team\n` +
+        `• We'll respond as quickly as possible\n` +
+        `• You'll get notifications when we reply\n\n` +
+        `*Available Commands:*\n` +
+        `/start - 🚀 Start the bot\n` +
+        `/help - ❓ Get help\n\n` +
+        `*Quick Support:*\n` +
+        `For immediate assistance, you can also:\n` +
+        `• Send your question directly\n` +
+        `• Describe your issue in detail\n` +
+        `• We're here to help! 🤝\n\n` +
+        `*Technical Support:*\n` +
+        `Contact @MarCreatorSupportBot for bot-related issues`;
     }
+    
+    await ctx.replyWithMarkdown(helpMessage);
+    
+  } catch (error) {
+    console.error('Help command error:', error);
+    await ctx.reply('Use /start to begin.');
   }
+}
   
   handleTextMessage = async (ctx) => {
     try {

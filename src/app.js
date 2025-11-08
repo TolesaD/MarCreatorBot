@@ -16,7 +16,6 @@ const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
-const { userOwnsBots, isBotOwnerOrCreator } = require('./utils/helpers');
 
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
@@ -40,52 +39,11 @@ class MetaBotCreator {
     this.setupHandlers();
   }
   
-  // Add this method to set commands dynamically based on user role
-  async setUserCommands(userId) {
-    try {
-      const isOwner = await isBotOwnerOrCreator(userId);
-      
-      if (isOwner) {
-        // Set admin commands for bot owners and creator
-        await this.bot.telegram.setMyCommands([
-          { command: 'start', description: '🚀 Start the bot' },
-          { command: 'createbot', description: '🤖 Create a new mini-bot' },
-          { command: 'mybots', description: '📊 Admin dashboard' },
-          { command: 'help', description: '❓ Get help' }
-        ], {
-          scope: {
-            type: 'chat',
-            chat_id: userId
-          }
-        });
-      } else {
-        // Set default commands for regular users
-        await this.bot.telegram.setMyCommands([
-          { command: 'start', description: '🚀 Start the bot' },
-          { command: 'help', description: '❓ Get help' }
-        ], {
-          scope: {
-            type: 'chat',
-            chat_id: userId
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error setting user commands:', error);
-    }
-  }
-  
   setupHandlers() {
     console.log('🔄 Setting up bot handlers...');
     
     this.bot.use(async (ctx, next) => {
       ctx.isMainBot = true;
-      
-      // Set appropriate commands for this user based on role
-      if (ctx.from) {
-        await this.setUserCommands(ctx.from.id);
-      }
-      
       return next();
     });
     
