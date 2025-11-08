@@ -1,11 +1,50 @@
 const { Markup } = require('telegraf');
 const Bot = require('../models/Bot');
 const Admin = require('../models/Admin');
+const User = require('../models/User');
 
 class BotManagementHandler {
+  static async checkUserAccess(userId) {
+    try {
+      return await User.hasBotAccess(userId);
+    } catch (error) {
+      console.error('Error checking user access:', error);
+      return false;
+    }
+  }
+
   static async handleMyBots(ctx) {
     try {
       const userId = ctx.from.id;
+      
+      // Check if user has access to bot management
+      const hasAccess = await this.checkUserAccess(userId);
+      if (!hasAccess) {
+        const message = '🤖 *Welcome to MarCreatorBot!*\n\n' +
+          'You don\'t have any bots yet. Let\'s create your first bot!\n\n' +
+          'With MetaBot Creator you can:\n' +
+          '• Create customer support bots\n' +
+          '• Manage communities\n' +
+          '• Send broadcasts\n' +
+          '• No coding required!';
+
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('🚀 Create First Bot', 'create_bot')],
+          [Markup.button.callback('❓ Get Help', 'help_user')]
+        ]);
+
+        if (ctx.updateType === 'callback_query') {
+          await ctx.editMessageText(message, { 
+            parse_mode: 'Markdown',
+            ...keyboard 
+          });
+          await ctx.answerCbQuery();
+        } else {
+          await ctx.replyWithMarkdown(message, keyboard);
+        }
+        return;
+      }
+      
       console.log('📊 Loading bots for user:', userId);
       
       // Get bots where user is owner
@@ -46,7 +85,7 @@ class BotManagementHandler {
 
         const keyboard = Markup.inlineKeyboard([
           [Markup.button.callback('🚀 Create First Bot', 'create_bot')],
-          [Markup.button.callback('🆘 Help', 'help')]
+          [Markup.button.callback('🆘 Help', 'help_user')]
         ]);
 
         if (ctx.updateType === 'callback_query') {
