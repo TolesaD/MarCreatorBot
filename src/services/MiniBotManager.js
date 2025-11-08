@@ -41,73 +41,71 @@ class MiniBotManager {
     return result;
   }
   
-// In your MiniBotManager.js, update the _initializeAllBots method:
-
-async _initializeAllBots() {
-  try {
-    console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
-    
-    await this.clearAllBots();
-    
-    console.log('⏳ Waiting for database to be fully ready...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-    
-    if (activeBots.length === 0) {
-      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+  async _initializeAllBots() {
+    try {
+      console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
+      
+      await this.clearAllBots();
+      
+      console.log('⏳ Waiting for database to be fully ready...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const activeBots = await Bot.findAll({ where: { is_active: true } });
+      
+      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+      
+      if (activeBots.length === 0) {
+        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+        this.isInitialized = true;
+        return 0;
+      }
+      
+      let successCount = 0;
+      let failedCount = 0;
+      
+      for (const botRecord of activeBots) {
+        try {
+          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+          
+          // Don't use timeout - let each bot initialize at its own pace
+          const success = await this.initializeBotWithEncryptionCheck(botRecord);
+          
+          if (success) {
+            successCount++;
+            console.log(`✅ Initialization started: ${botRecord.bot_name}`);
+          } else {
+            failedCount++;
+            console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
+          }
+          
+          // Small delay between bots
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
+          failedCount++;
+          // Continue with next bot even if this one fails
+          console.log(`🔄 Continuing with next bot despite error...`);
+        }
+      }
+      
+      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+      
+      // Wait a bit for bots to finish launching
+      console.log('⏳ Waiting for bots to complete launch...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      
       this.isInitialized = true;
+      this.debugActiveBots();
+      
+      return successCount;
+      
+    } catch (error) {
+      console.error('💥 CRITICAL: Error initializing all bots:', error);
+      this.isInitialized = false;
       return 0;
     }
-    
-    let successCount = 0;
-    let failedCount = 0;
-    
-    for (const botRecord of activeBots) {
-      try {
-        console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-        
-        // Don't use timeout - let each bot initialize at its own pace
-        const success = await this.initializeBotWithEncryptionCheck(botRecord);
-        
-        if (success) {
-          successCount++;
-          console.log(`✅ Initialization started: ${botRecord.bot_name}`);
-        } else {
-          failedCount++;
-          console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
-        }
-        
-        // Small delay between bots
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-      } catch (error) {
-        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-        failedCount++;
-        // Continue with next bot even if this one fails
-        console.log(`🔄 Continuing with next bot despite error...`);
-      }
-    }
-    
-    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
-    
-    // Wait a bit for bots to finish launching
-    console.log('⏳ Waiting for bots to complete launch...');
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    
-    this.isInitialized = true;
-    this.debugActiveBots();
-    
-    return successCount;
-    
-  } catch (error) {
-    console.error('💥 CRITICAL: Error initializing all bots:', error);
-    this.isInitialized = false;
-    return 0;
   }
-}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {
@@ -143,107 +141,109 @@ async _initializeAllBots() {
     console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
-async initializeBot(botRecord) {
-  try {
-    console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
-    
-    if (this.activeBots.has(botRecord.id)) {
-      console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
-      await this.stopBot(botRecord.id);
-    }
-    
-    console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
-    const token = botRecord.getDecryptedToken();
-    if (!token) {
-      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-      return false;
-    }
-    
-    if (!this.isValidBotToken(token)) {
-      console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
-      return false;
-    }
-    
-    console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
-    
-    const bot = new Telegraf(token, {
-      handlerTimeout: 120000, // Increased timeout
-      telegram: { 
-        apiRoot: 'https://api.telegram.org',
-        agent: null
-      }
-    });
-    
-    bot.context.metaBotInfo = {
-      mainBotId: botRecord.id,
-      botId: botRecord.bot_id,
-      botName: botRecord.bot_name,
-      botUsername: botRecord.bot_username,
-      botRecord: botRecord
-    };
-    
-    // Set default commands for new users
-    await this.setBotCommands(bot, token);
-    
-    console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-    
-    // Store the bot instance IMMEDIATELY before launch
-    this.activeBots.set(botRecord.id, { 
-      instance: bot, 
-      record: botRecord,
-      token: token,
-      launchedAt: new Date(),
-      status: 'launching' // Mark as launching
-    });
-    
-    console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-    
-    // Launch without waiting for completion
-    bot.launch({
-      dropPendingUpdates: true,
-      allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-    }).then(() => {
-      console.log(`✅ Bot launch completed: ${botRecord.bot_name}`);
+  async initializeBot(botRecord) {
+    try {
+      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
       
-      // Update status to active after successful launch
-      const botData = this.activeBots.get(botRecord.id);
-      if (botData) {
-        botData.status = 'active';
-        botData.launchedAt = new Date();
-        console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+      if (this.activeBots.has(botRecord.id)) {
+        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+        await this.stopBot(botRecord.id);
       }
       
-    }).catch(launchError => {
-      console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
+      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
+      const token = botRecord.getDecryptedToken();
+      if (!token) {
+        console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
+        return false;
+      }
       
-      // Try alternative launch method
-      console.log(`🔄 Trying alternative launch for ${botRecord.bot_name}...`);
-      try {
-        bot.startPolling();
-        console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+      if (!this.isValidBotToken(token)) {
+        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
+        return false;
+      }
+      
+      console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
+      
+      const bot = new Telegraf(token, {
+        handlerTimeout: 120000, // Increased timeout
+        telegram: { 
+          apiRoot: 'https://api.telegram.org',
+          agent: null
+        }
+      });
+      
+      bot.context.metaBotInfo = {
+        mainBotId: botRecord.id,
+        botId: botRecord.bot_id,
+        botName: botRecord.bot_name,
+        botUsername: botRecord.bot_username,
+        botRecord: botRecord
+      };
+      
+      this.setupHandlers(bot);
+      
+      // Set default commands for new users
+      await this.setBotCommands(bot, token);
+      
+      console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+      
+      // Store the bot instance IMMEDIATELY before launch
+      this.activeBots.set(botRecord.id, { 
+        instance: bot, 
+        record: botRecord,
+        token: token,
+        launchedAt: new Date(),
+        status: 'launching' // Mark as launching
+      });
+      
+      console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+      
+      // Launch without waiting for completion
+      bot.launch({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+      }).then(() => {
+        console.log(`✅ Bot launch completed: ${botRecord.bot_name}`);
         
-        // Update status
+        // Update status to active after successful launch
         const botData = this.activeBots.get(botRecord.id);
         if (botData) {
           botData.status = 'active';
-          console.log(`✅ Bot marked as ACTIVE after polling: ${botRecord.bot_name}`);
+          botData.launchedAt = new Date();
+          console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
         }
-      } catch (pollError) {
-        console.error(`❌ Alternative launch failed for ${botRecord.bot_name}:`, pollError.message);
-        // Remove from active bots if both methods fail
-        this.activeBots.delete(botRecord.id);
-      }
-    });
-    
-    // Return true immediately since we stored the bot instance
-    return true;
-    
-  } catch (error) {
-    console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-    this.activeBots.delete(botRecord.id);
-    return false;
+        
+      }).catch(launchError => {
+        console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
+        
+        // Try alternative launch method
+        console.log(`🔄 Trying alternative launch for ${botRecord.bot_name}...`);
+        try {
+          bot.startPolling();
+          console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+          
+          // Update status
+          const botData = this.activeBots.get(botRecord.id);
+          if (botData) {
+            botData.status = 'active';
+            console.log(`✅ Bot marked as ACTIVE after polling: ${botRecord.bot_name}`);
+          }
+        } catch (pollError) {
+          console.error(`❌ Alternative launch failed for ${botRecord.bot_name}:`, pollError.message);
+          // Remove from active bots if both methods fail
+          this.activeBots.delete(botRecord.id);
+        }
+      });
+      
+      // Return true immediately since we stored the bot instance
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
+      this.activeBots.delete(botRecord.id);
+      return false;
+    }
   }
-}
 
   isValidBotToken(token) {
     if (!token || typeof token !== 'string') {
@@ -260,95 +260,93 @@ async initializeBot(botRecord) {
     return isValid;
   }
   
-// In MiniBotManager.js - Replace the setBotCommands method:
-
-async setBotCommands(bot, token, userId = null) {
-  try {
-    console.log('🔄 Setting bot commands for menu...');
-    
-    // Default commands for regular users
-    const userCommands = [
-      { command: 'start', description: '🚀 Start the bot' },
-      { command: 'help', description: '❓ Get help' }
-    ];
-    
-    // Admin commands for bot owners and admins
-    const adminCommands = [
-      { command: 'start', description: '🚀 Start the bot' },
-      { command: 'dashboard', description: '📊 Admin dashboard' },
-      { command: 'messages', description: '📨 View user messages' },
-      { command: 'broadcast', description: '📢 Send broadcast' },
-      { command: 'stats', description: '📈 View statistics' },
-      { command: 'admins', description: '👥 Manage admins' },
-      { command: 'help', description: '❓ Get help' }
-    ];
-    
-    if (userId) {
-      // Set commands for specific user
-      const isAdmin = await this.checkAdminAccess(bot.context.metaBotInfo.mainBotId, userId);
+  async setBotCommands(bot, token, userId = null) {
+    try {
+      console.log('🔄 Setting bot commands for menu...');
       
-      if (isAdmin) {
-        await bot.telegram.setMyCommands(adminCommands, {
-          scope: {
-            type: 'chat',
-            chat_id: userId
-          }
-        });
-        console.log(`✅ Admin commands set for user ${userId}`);
+      // Default commands for regular users
+      const userCommands = [
+        { command: 'start', description: '🚀 Start the bot' },
+        { command: 'help', description: '❓ Get help' }
+      ];
+      
+      // Admin commands for bot owners and admins
+      const adminCommands = [
+        { command: 'start', description: '🚀 Start the bot' },
+        { command: 'dashboard', description: '📊 Admin dashboard' },
+        { command: 'messages', description: '📨 View user messages' },
+        { command: 'broadcast', description: '📢 Send broadcast' },
+        { command: 'stats', description: '📈 View statistics' },
+        { command: 'admins', description: '👥 Manage admins' },
+        { command: 'help', description: '❓ Get help' }
+      ];
+      
+      if (userId) {
+        // Set commands for specific user
+        const isAdmin = await this.checkAdminAccess(bot.context.metaBotInfo.mainBotId, userId);
+        
+        if (isAdmin) {
+          await bot.telegram.setMyCommands(adminCommands, {
+            scope: {
+              type: 'chat',
+              chat_id: userId
+            }
+          });
+          console.log(`✅ Admin commands set for user ${userId}`);
+        } else {
+          await bot.telegram.setMyCommands(userCommands, {
+            scope: {
+              type: 'chat',
+              chat_id: userId
+            }
+          });
+          console.log(`✅ User commands set for user ${userId}`);
+        }
       } else {
-        await bot.telegram.setMyCommands(userCommands, {
-          scope: {
-            type: 'chat',
-            chat_id: userId
-          }
-        });
-        console.log(`✅ User commands set for user ${userId}`);
+        // Set default commands for all users
+        await bot.telegram.setMyCommands(userCommands);
+        console.log('✅ Default user commands set for all users');
       }
-    } else {
-      // Set default commands for all users
-      await bot.telegram.setMyCommands(userCommands);
-      console.log('✅ Default user commands set for all users');
+    } catch (error) {
+      console.error('❌ Failed to set bot commands:', error.message);
     }
-  } catch (error) {
-    console.error('❌ Failed to set bot commands:', error.message);
   }
-}
   
-setupHandlers = (bot) => {
-  console.log('🔄 Setting up handlers for bot...');
-  
-  // Add middleware to set role-based commands
-  bot.use(async (ctx, next) => {
-    ctx.miniBotManager = this;
+  setupHandlers = (bot) => {
+    console.log('🔄 Setting up handlers for bot...');
     
-    // Set appropriate commands for this user
-    if (ctx.from && ctx.metaBotInfo) {
-      await this.setBotCommands(bot, null, ctx.from.id);
-    }
+    // Add middleware to set role-based commands
+    bot.use(async (ctx, next) => {
+      ctx.miniBotManager = this;
+      
+      // Set appropriate commands for this user
+      if (ctx.from && ctx.metaBotInfo) {
+        await this.setBotCommands(bot, null, ctx.from.id);
+      }
+      
+      return next();
+    });
     
-    return next();
-  });
-  
-  bot.start((ctx) => this.handleStart(ctx));
-  bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
-  bot.command('messages', (ctx) => this.handleMessagesCommand(ctx));
-  bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
-  bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
-  bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
-  bot.command('help', (ctx) => this.handleHelp(ctx));
-  bot.on('text', (ctx) => this.handleTextMessage(ctx));
-  
-  bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
-  bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
-  bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
-  bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
-  
-  bot.catch((error, ctx) => {
-    console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
-  });
-  
-  console.log('✅ Bot handlers setup complete');
-}
+    bot.start((ctx) => this.handleStart(ctx));
+    bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
+    bot.command('messages', (ctx) => this.handleMessagesCommand(ctx));
+    bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
+    bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
+    bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
+    bot.command('help', (ctx) => this.handleHelp(ctx));
+    bot.on('text', (ctx) => this.handleTextMessage(ctx));
+    
+    bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
+    bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
+    bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
+    bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
+    
+    bot.catch((error, ctx) => {
+      console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
+    });
+    
+    console.log('✅ Bot handlers setup complete');
+  }
 
   getBotInstanceByDbId = (dbId) => {
     const botData = this.activeBots.get(parseInt(dbId));
@@ -426,39 +424,39 @@ setupHandlers = (bot) => {
     };
   }
 
- handleStart = async (ctx) => {
-  try {
-    const { metaBotInfo } = ctx;
-    const user = ctx.from;
-    
-    console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name}`);
-    
-    // Ensure commands are set for this user
-    await this.setBotCommands(ctx.telegram, null, user.id);
-    
-    await UserLog.upsert({
-      bot_id: metaBotInfo.mainBotId,
-      user_id: user.id,
-      user_username: user.username,
-      user_first_name: user.first_name,
-      last_interaction: new Date(),
-      first_interaction: new Date(),
-      interaction_count: 1
-    });
-    
-    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-    
-    if (isAdmin) {
-      await this.showAdminDashboard(ctx, metaBotInfo);
-    } else {
-      await this.showUserWelcome(ctx, metaBotInfo);
+  handleStart = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name}`);
+      
+      // Ensure commands are set for this user
+      await this.setBotCommands(ctx.telegram, null, user.id);
+      
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date(),
+        first_interaction: new Date(),
+        interaction_count: 1
+      });
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+      } else {
+        await this.showUserWelcome(ctx, metaBotInfo);
+      }
+      
+    } catch (error) {
+      console.error('Start handler error:', error);
+      await ctx.reply('Welcome! Send me a message.');
     }
-    
-  } catch (error) {
-    console.error('Start handler error:', error);
-    await ctx.reply('Welcome! Send me a message.');
   }
-}
   
   showAdminDashboard = async (ctx, metaBotInfo) => {
     try {
@@ -586,54 +584,54 @@ setupHandlers = (bot) => {
     }
   }
   
-handleHelp = async (ctx) => {
-  try {
-    const { metaBotInfo } = ctx;
-    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, ctx.from.id);
-    
-    let helpMessage;
-    
-    if (isAdmin) {
-      // Admin help content
-      helpMessage = `🤖 *Admin Help & Support*\n\n` +
-        `*Available Commands:*\n` +
-        `/dashboard - 📊 Admin dashboard with quick stats\n` +
-        `/messages - 📨 View and reply to user messages\n` +
-        `/broadcast - 📢 Send message to all users\n` +
-        `/stats - 📈 View bot statistics\n` +
-        `/admins - 👥 Manage admin team (owners only)\n` +
-        `/help - ❓ This help message\n\n` +
-        `*Quick Tips:*\n` +
-        `• Click notification buttons to reply instantly\n` +
-        `• Use broadcast for important announcements\n` +
-        `• Add co-admins to help manage messages\n\n` +
-        `*Need help?* Contact @MarCreatorSupportBot`;
-    } else {
-      // Regular user help content
-      helpMessage = `🤖 *Help & Support*\n\n` +
-        `*How to use this bot:*\n` +
-        `• Send any message to contact our team\n` +
-        `• We'll respond as quickly as possible\n` +
-        `• You'll get notifications when we reply\n\n` +
-        `*Available Commands:*\n` +
-        `/start - 🚀 Start the bot\n` +
-        `/help - ❓ Get help\n\n` +
-        `*Quick Support:*\n` +
-        `For immediate assistance, you can also:\n` +
-        `• Send your question directly\n` +
-        `• Describe your issue in detail\n` +
-        `• We're here to help! 🤝\n\n` +
-        `*Technical Support:*\n` +
-        `Contact @MarCreatorSupportBot for bot-related issues`;
+  handleHelp = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, ctx.from.id);
+      
+      let helpMessage;
+      
+      if (isAdmin) {
+        // Admin help content
+        helpMessage = `🤖 *Admin Help & Support*\n\n` +
+          `*Available Commands:*\n` +
+          `/dashboard - 📊 Admin dashboard with quick stats\n` +
+          `/messages - 📨 View and reply to user messages\n` +
+          `/broadcast - 📢 Send message to all users\n` +
+          `/stats - 📈 View bot statistics\n` +
+          `/admins - 👥 Manage admin team (owners only)\n` +
+          `/help - ❓ This help message\n\n` +
+          `*Quick Tips:*\n` +
+          `• Click notification buttons to reply instantly\n` +
+          `• Use broadcast for important announcements\n` +
+          `• Add co-admins to help manage messages\n\n` +
+          `*Need help?* Contact @MarCreatorSupportBot`;
+      } else {
+        // Regular user help content
+        helpMessage = `🤖 *Help & Support*\n\n` +
+          `*How to use this bot:*\n` +
+          `• Send any message to contact our team\n` +
+          `• We'll respond as quickly as possible\n` +
+          `• You'll get notifications when we reply\n\n` +
+          `*Available Commands:*\n` +
+          `/start - 🚀 Start the bot\n` +
+          `/help - ❓ Get help\n\n` +
+          `*Quick Support:*\n` +
+          `For immediate assistance, you can also:\n` +
+          `• Send your question directly\n` +
+          `• Describe your issue in detail\n` +
+          `• We're here to help! 🤝\n\n` +
+          `*Technical Support:*\n` +
+          `Contact @MarCreatorSupportBot for bot-related issues`;
+      }
+      
+      await ctx.replyWithMarkdown(helpMessage);
+      
+    } catch (error) {
+      console.error('Help command error:', error);
+      await ctx.reply('Use /start to begin.');
     }
-    
-    await ctx.replyWithMarkdown(helpMessage);
-    
-  } catch (error) {
-    console.error('Help command error:', error);
-    await ctx.reply('Use /start to begin.');
   }
-}
   
   handleTextMessage = async (ctx) => {
     try {
