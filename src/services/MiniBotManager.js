@@ -69,27 +69,19 @@ async _initializeAllBots() {
       try {
         console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
         
-        // Use a timeout for each bot initialization to prevent hanging
-        const initializationPromise = this.initializeBotWithEncryptionCheck(botRecord);
-        const timeoutPromise = new Promise((resolve) => {
-          setTimeout(() => {
-            console.log(`⏰ Timeout reached for ${botRecord.bot_name}, moving to next bot...`);
-            resolve(false);
-          }, 30000); // 30 second timeout per bot
-        });
-        
-        const success = await Promise.race([initializationPromise, timeoutPromise]);
+        // Don't use timeout - let each bot initialize at its own pace
+        const success = await this.initializeBotWithEncryptionCheck(botRecord);
         
         if (success) {
           successCount++;
-          console.log(`✅ Successfully initialized: ${botRecord.bot_name}`);
+          console.log(`✅ Initialization started: ${botRecord.bot_name}`);
         } else {
           failedCount++;
           console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
         }
         
         // Small delay between bots
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
       } catch (error) {
         console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
@@ -99,7 +91,12 @@ async _initializeAllBots() {
       }
     }
     
-    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialized successfully (${failedCount} failed)`);
+    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+    
+    // Wait a bit for bots to finish launching
+    console.log('⏳ Waiting for bots to complete launch...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
     this.isInitialized = true;
     this.debugActiveBots();
     
@@ -146,114 +143,106 @@ async _initializeAllBots() {
     console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
-  async initializeBot(botRecord) {
-    try {
-      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
-      
-      if (this.activeBots.has(botRecord.id)) {
-        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
-        await this.stopBot(botRecord.id);
-      }
-      
-      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
-      const token = botRecord.getDecryptedToken();
-      if (!token) {
-        console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      if (!this.isValidBotToken(token)) {
-        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
-      
-      const bot = new Telegraf(token, {
-        handlerTimeout: 120000,
-        telegram: { 
-          apiRoot: 'https://api.telegram.org',
-          agent: null
-        }
-      });
-      
-      bot.context.metaBotInfo = {
-        mainBotId: botRecord.id,
-        botId: botRecord.bot_id,
-        botName: botRecord.bot_name,
-        botUsername: botRecord.bot_username,
-        botRecord: botRecord
-      };
-      
-      this.setupHandlers(bot);
-      
-// In the initializeBot method, replace the launch section with this:
-
-console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-
-try {
-  // Use a simpler launch approach
-  await bot.launch({
-    dropPendingUpdates: true,
-    allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-  });
-  
-  console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
-  
-  // Verify the bot is actually working
+async initializeBot(botRecord) {
   try {
-    const botInfo = await bot.telegram.getMe();
-    console.log(`✅ Bot verified: @${botInfo.username}`);
-  } catch (verifyError) {
-    console.error(`❌ Bot verification failed: ${verifyError.message}`);
-    // Don't throw here, continue anyway
-  }
-  
-  await this.setBotCommands(bot, token);
-  
-  this.activeBots.set(botRecord.id, { 
-    instance: bot, 
-    record: botRecord,
-    token: token,
-    launchedAt: new Date(),
-    status: 'active'
-  });
-  
-  console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-  console.log(`📊 Current active bots count: ${this.activeBots.size}`);
-  
-  return true;
-  
-} catch (launchError) {
-  console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
-  
-  // Fallback: start polling directly
-  console.log(`🔄 Starting bot with polling fallback: ${botRecord.bot_name}`);
-  try {
-    bot.startPolling();
-    console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+    console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
     
+    if (this.activeBots.has(botRecord.id)) {
+      console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+      await this.stopBot(botRecord.id);
+    }
+    
+    console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
+    const token = botRecord.getDecryptedToken();
+    if (!token) {
+      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
+      return false;
+    }
+    
+    if (!this.isValidBotToken(token)) {
+      console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
+      return false;
+    }
+    
+    console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
+    
+    const bot = new Telegraf(token, {
+      handlerTimeout: 120000, // Increased timeout
+      telegram: { 
+        apiRoot: 'https://api.telegram.org',
+        agent: null
+      }
+    });
+    
+    bot.context.metaBotInfo = {
+      mainBotId: botRecord.id,
+      botId: botRecord.bot_id,
+      botName: botRecord.bot_name,
+      botUsername: botRecord.bot_username,
+      botRecord: botRecord
+    };
+    
+    this.setupHandlers(bot);
+    
+    console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+    
+    // Store the bot instance IMMEDIATELY before launch
     this.activeBots.set(botRecord.id, { 
       instance: bot, 
       record: botRecord,
       token: token,
       launchedAt: new Date(),
-      status: 'active'
+      status: 'launching' // Mark as launching
     });
     
+    console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+    
+    // Launch without waiting for completion
+    bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+    }).then(() => {
+      console.log(`✅ Bot launch completed: ${botRecord.bot_name}`);
+      
+      // Update status to active after successful launch
+      const botData = this.activeBots.get(botRecord.id);
+      if (botData) {
+        botData.status = 'active';
+        botData.launchedAt = new Date();
+        console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+      }
+      
+    }).catch(launchError => {
+      console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
+      
+      // Try alternative launch method
+      console.log(`🔄 Trying alternative launch for ${botRecord.bot_name}...`);
+      try {
+        bot.startPolling();
+        console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+        
+        // Update status
+        const botData = this.activeBots.get(botRecord.id);
+        if (botData) {
+          botData.status = 'active';
+          console.log(`✅ Bot marked as ACTIVE after polling: ${botRecord.bot_name}`);
+        }
+      } catch (pollError) {
+        console.error(`❌ Alternative launch failed for ${botRecord.bot_name}:`, pollError.message);
+        // Remove from active bots if both methods fail
+        this.activeBots.delete(botRecord.id);
+      }
+    });
+    
+    // Return true immediately since we stored the bot instance
     return true;
-  } catch (pollError) {
-    console.error(`❌ Polling also failed for ${botRecord.bot_name}:`, pollError.message);
+    
+  } catch (error) {
+    console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
+    this.activeBots.delete(botRecord.id);
     return false;
   }
 }
-      
-    } catch (error) {
-      console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-      this.activeBots.delete(botRecord.id);
-      return false;
-    }
-  }
 
   isValidBotToken(token) {
     if (!token || typeof token !== 'string') {
