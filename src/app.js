@@ -20,6 +20,7 @@ const MiniBotManager = require('./services/MiniBotManager');
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
+const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 
 class MetaBotCreator {
   constructor() {
@@ -51,6 +52,15 @@ class MetaBotCreator {
     this.bot.help(helpHandler);
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
+    
+    // NEW: Platform admin command
+    this.bot.command('platform', (ctx) => {
+      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        PlatformAdminHandler.platformDashboard(ctx);
+      } else {
+        ctx.reply('❌ Platform admin access required.');
+      }
+    });
     
     // DEBUG COMMANDS
     this.bot.command('debug_minibots', async (ctx) => {
@@ -138,6 +148,12 @@ class MetaBotCreator {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
       
+      // Check for platform admin sessions first
+      if (PlatformAdminHandler.isInPlatformAdminSession(userId)) {
+        await PlatformAdminHandler.handlePlatformAdminInput(ctx);
+        return;
+      }
+      
       if (messageText === '🚫 Cancel Creation') {
         await cancelCreationHandler(ctx);
         return;
@@ -158,6 +174,9 @@ class MetaBotCreator {
     
     this.setupCallbackHandlers();
     this.registerAdminCallbacks();
+    
+    // NEW: Register platform admin callbacks
+    PlatformAdminHandler.registerCallbacks(this.bot);
     
     this.bot.catch((err, ctx) => {
       console.error('❌ Main bot error:', err);
@@ -445,6 +464,7 @@ class MetaBotCreator {
         console.log('💬 Send /start to see main menu');
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
+        console.log('👑 Use /platform for admin dashboard');
         console.log('🔄 Use /reinit to restart mini-bots');
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');

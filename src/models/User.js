@@ -28,6 +28,18 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
+  is_banned: { // NEW FIELD
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  ban_reason: { // NEW FIELD
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  banned_at: { // NEW FIELD
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   language_code: {
     type: DataTypes.STRING(10),
     allowNull: true
@@ -49,6 +61,9 @@ const User = sequelize.define('User', {
     },
     {
       fields: ['username']
+    },
+    {
+      fields: ['is_banned'] // NEW INDEX
     }
   ]
 });

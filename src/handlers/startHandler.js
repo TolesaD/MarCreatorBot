@@ -16,7 +16,6 @@ const startHandler = async (ctx) => {
     });
 
     const welcomeMessage = `🤖 *Welcome to MarCreatorBot!*\n\n` +
-
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
       `✨ *Create & Manage Your Own Bots:*\n` +
       `• 🚀 Create mini-bots without coding\n` +
@@ -29,7 +28,6 @@ const startHandler = async (ctx) => {
       `1. Create bot with @BotFather\n` +
       `2. Add it here using /createbot\n` +
       `3. Manage it DIRECTLY in the mini-bot\n` +
-      `4. Get instant notifications for new messages\n\n` +
       `*🚀 All management happens in your mini-bots!*\n\n` +
       `🔒 *Legal & Privacy:*\n` +
       `By using this bot, you agree to our:\n` +
@@ -45,7 +43,8 @@ const startHandler = async (ctx) => {
       [
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
         Markup.button.callback('📋 Terms', 'terms_of_service')
-      ]
+      ],
+      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreatorUpdates')] // NEW BUTTON
     ]);
 
     if (ctx.updateType === 'callback_query') {
@@ -72,7 +71,8 @@ const startHandler = async (ctx) => {
         Markup.inlineKeyboard([
           [Markup.button.callback('🚀 Create Bot', 'create_bot')],
           [Markup.button.callback('📊 My Bots', 'my_bots')],
-          [Markup.button.callback('❓ Help', 'help')]
+          [Markup.button.callback('❓ Help', 'help')],
+          [Markup.button.url('📺 Tutorials', 'https://t.me/MarCreator')] // NEW BUTTON
         ])
       );
     } catch (fallbackError) {
@@ -112,9 +112,7 @@ const helpHandler = async (ctx) => {
       `/admins - Manage team (owners only)\n\n` +
       `*💡 Pro Tips:*\n` +
       `• Use bot commands/Menu for quick access\n` +
-      `• Click notification buttons to reply instantly\n` +
       `• Add co-admins to help manage\n` +
-      `• Broadcast important announcements\n\n` +
       `*🔒 Legal & Support:*\n` +
       `/privacy - View Privacy Policy\n` +
       `/terms - View Terms of Service\n` +
