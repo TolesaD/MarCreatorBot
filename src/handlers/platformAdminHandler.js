@@ -1,6 +1,6 @@
-// src/handlers/platformAdminHandler.js - FIXED VERSION
+// src/handlers/platformAdminHandler.js - COMPLETE FIXED VERSION
 const { Markup } = require('telegraf');
-const { User, Bot, UserLog, Feedback, BroadcastHistory } = require('../models');
+const { User, Bot, UserLog, Feedback, BroadcastHistory, Admin } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
 const MiniBotManager = require('../services/MiniBotManager');
 
@@ -1205,7 +1205,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Process bot toggle
+  // Process bot toggle - FIXED: Proper reactivation
   static async processBotToggle(ctx, input) {
     try {
       let targetBot;
@@ -1229,9 +1229,14 @@ class PlatformAdminHandler {
       if (newStatus) {
         // Activate bot
         try {
-          await MiniBotManager.initializeBot(targetBot);
-          await targetBot.update({ is_active: true });
-          await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
+          const success = await MiniBotManager.initializeBot(targetBot);
+          if (success) {
+            await targetBot.update({ is_active: true });
+            await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
+          } else {
+            await ctx.reply(`❌ Failed to activate bot: Initialization failed. Check bot token.`);
+            return;
+          }
         } catch (error) {
           await ctx.reply(`❌ Failed to activate bot: ${error.message}`);
           return;
@@ -1257,7 +1262,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Process bot deletion
+  // Process bot deletion - FIXED: Foreign key constraint handling
   static async processBotDeletion(ctx, input) {
     try {
       let targetBot;
@@ -1283,20 +1288,51 @@ class PlatformAdminHandler {
         console.error('Error stopping bot during deletion:', error);
       }
 
+      // FIXED: Delete related records first to avoid foreign key constraints
+      console.log(`🗑️ Deleting related records for bot ${targetBot.id}...`);
+      
+      // Delete admins associated with this bot
+      const adminCount = await Admin.count({ where: { bot_id: targetBot.id } });
+      if (adminCount > 0) {
+        await Admin.destroy({ where: { bot_id: targetBot.id } });
+        console.log(`✅ Deleted ${adminCount} admin records`);
+      }
+      
+      // Delete feedback/messages associated with this bot
+      const feedbackCount = await Feedback.count({ where: { bot_id: targetBot.id } });
+      if (feedbackCount > 0) {
+        await Feedback.destroy({ where: { bot_id: targetBot.id } });
+        console.log(`✅ Deleted ${feedbackCount} feedback records`);
+      }
+      
+      // Delete user logs associated with this bot
+      const userLogCount = await UserLog.count({ where: { bot_id: targetBot.id } });
+      if (userLogCount > 0) {
+        await UserLog.destroy({ where: { bot_id: targetBot.id } });
+        console.log(`✅ Deleted ${userLogCount} user log records`);
+      }
+      
+      // Delete broadcast history associated with this bot
+      const broadcastCount = await BroadcastHistory.count({ where: { bot_id: targetBot.id } });
+      if (broadcastCount > 0) {
+        await BroadcastHistory.destroy({ where: { bot_id: targetBot.id } });
+        console.log(`✅ Deleted ${broadcastCount} broadcast records`);
+      }
+
       // Delete bot from database
       const botName = targetBot.bot_name;
       const botUsername = targetBot.bot_username;
       
       await targetBot.destroy();
 
-      await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted.`);
+      await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted along with all its data.`);
 
       // Return to bot management
       await this.botManagement(ctx);
 
     } catch (error) {
       console.error('Process bot deletion error:', error);
-      await ctx.reply('❌ Error deleting bot.');
+      await ctx.reply('❌ Error deleting bot: ' + error.message);
     }
   }
 
