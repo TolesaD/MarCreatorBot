@@ -44,7 +44,7 @@ const startHandler = async (ctx) => {
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
         Markup.button.callback('📋 Terms', 'terms_of_service')
       ],
-      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreatorUpdates')] // NEW BUTTON
+      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')] // NEW BUTTON
     ]);
 
     if (ctx.updateType === 'callback_query') {
