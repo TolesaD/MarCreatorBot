@@ -175,8 +175,7 @@ class MetaBotCreator {
     this.setupCallbackHandlers();
     this.registerAdminCallbacks();
     
-    // NEW: Register platform admin callbacks
-    PlatformAdminHandler.registerCallbacks(this.bot);
+    // Platform admin callbacks are now registered in setupCallbackHandlers FIRST
     
     this.bot.catch((err, ctx) => {
       console.error('❌ Main bot error:', err);
@@ -193,6 +192,10 @@ class MetaBotCreator {
   setupCallbackHandlers() {
     console.log('🔄 Setting up main bot callback handlers...');
     
+    // REGISTER PLATFORM ADMIN CALLBACKS FIRST - This is critical!
+    PlatformAdminHandler.registerCallbacks(this.bot);
+    
+    // Then register other specific callbacks
     this.bot.action('start', async (ctx) => {
       await ctx.answerCbQuery();
       await startHandler(ctx);
@@ -248,10 +251,11 @@ class MetaBotCreator {
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
     
-    this.bot.action(/.+/, async (ctx) => {
-      await ctx.answerCbQuery();
-      await startHandler(ctx);
-    });
+    // REMOVED the catch-all handler that was causing platform admin buttons to redirect to start
+    // this.bot.action(/.+/, async (ctx) => {
+    //   await ctx.answerCbQuery();
+    //   await startHandler(ctx);
+    // });
     
     console.log('✅ Main bot callback handlers setup complete');
   }
