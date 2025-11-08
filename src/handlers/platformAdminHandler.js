@@ -1,7 +1,8 @@
-// src/handlers/platformAdminHandler.js - FIXED VERSION
+// src/handlers/platformAdminHandler.js - COMPLETE VERSION
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
+const MiniBotManager = require('../services/MiniBotManager');
 
 // Store admin management sessions
 const platformAdminSessions = new Map();
@@ -79,14 +80,24 @@ class PlatformAdminHandler {
         [Markup.button.callback('📢 Platform Broadcast', 'platform_broadcast')],
         [Markup.button.callback('🚫 Ban Management', 'platform_bans')],
         [Markup.button.callback('📊 Advanced Analytics', 'platform_analytics')],
-        [Markup.button.callback('🔄 Refresh Stats', 'platform_dashboard')]
+        [Markup.button.callback('🔄 Refresh Stats', 'platform_dashboard_refresh')]
       ]);
 
       if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(dashboardMessage, {
-          parse_mode: 'Markdown',
-          ...keyboard
-        });
+        try {
+          await ctx.editMessageText(dashboardMessage, {
+            parse_mode: 'Markdown',
+            ...keyboard
+          });
+        } catch (error) {
+          // If message content is the same, just answer callback query
+          if (error.response && error.response.error_code === 400 && 
+              error.response.description.includes('message is not modified')) {
+            await ctx.answerCbQuery('✅ Stats are up to date');
+            return;
+          }
+          throw error;
+        }
         await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(dashboardMessage, keyboard);
@@ -157,7 +168,8 @@ class PlatformAdminHandler {
           Markup.button.callback('🚫 Ban User', 'platform_ban_user'),
           Markup.button.callback('✅ Unban User', 'platform_unban_user')
         ],
-        [Markup.button.callback('📊 User Stats', 'platform_user_stats')],
+        [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
+        [Markup.button.callback('📋 Export Users', 'platform_export_users')],
         [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
       ]);
 
@@ -549,9 +561,9 @@ class PlatformAdminHandler {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
       const successRate = ((successCount / users.length) * 100).toFixed(1);
 
-      // Save broadcast history
+      // Save broadcast history - FIXED: Include bot_id for platform broadcasts
       await BroadcastHistory.create({
-        bot_id: null, // Platform broadcast
+        bot_id: 0, // Use 0 for platform broadcasts instead of null
         sent_by: ctx.from.id,
         message: message.substring(0, 1000), // Limit message length
         total_users: users.length,
@@ -685,6 +697,393 @@ class PlatformAdminHandler {
     }
   }
 
+  // User statistics feature
+  static async userStatistics(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      // Get detailed user statistics
+      const [
+        totalUsers,
+        bannedUsers,
+        activeToday,
+        activeWeek,
+        newToday,
+        newWeek,
+        usersWithBots
+      ] = await Promise.all([
+        User.count(),
+        User.count({ where: { is_banned: true } }),
+        User.count({
+          where: {
+            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          include: [{
+            model: Bot,
+            as: 'OwnedBots',
+            required: true
+          }]
+        })
+      ]);
+
+      const statsMessage = `📊 *User Statistics*\n\n` +
+        `*Overview:*\n` +
+        `👥 Total Users: ${formatNumber(totalUsers)}\n` +
+        `🚫 Banned Users: ${formatNumber(bannedUsers)}\n` +
+        `✅ Active Users: ${formatNumber(totalUsers - bannedUsers)}\n\n` +
+        
+        `*Activity:*\n` +
+        `📈 Active Today: ${formatNumber(activeToday)}\n` +
+        `📈 Active This Week: ${formatNumber(activeWeek)}\n` +
+        `🆕 New Today: ${formatNumber(newToday)}\n` +
+        `🆕 New This Week: ${formatNumber(newWeek)}\n\n` +
+        
+        `*Bot Ownership:*\n` +
+        `🤖 Users with Bots: ${formatNumber(usersWithBots)}\n` +
+        `📊 Bot Ownership Rate: ${((usersWithBots / totalUsers) * 100).toFixed(1)}%\n\n` +
+        
+        `*Platform Health:*\n` +
+        `📱 User Retention: ${((activeWeek / totalUsers) * 100).toFixed(1)}%\n` +
+        `🚀 Growth Rate: ${((newWeek / totalUsers) * 100).toFixed(1)}%`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
+        [Markup.button.callback('📋 Export Users', 'platform_export_users')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(statsMessage, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(statsMessage, keyboard);
+      }
+
+    } catch (error) {
+      console.error('User statistics error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading user statistics');
+      } else {
+        await ctx.reply('❌ Error loading user statistics');
+      }
+    }
+  }
+
+  // Detailed reports feature
+  static async detailedReports(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      // Get comprehensive platform reports
+      const [
+        userGrowth,
+        botGrowth,
+        messageStats,
+        broadcastStats
+      ] = await Promise.all([
+        // User growth over last 7 days
+        User.findAll({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          },
+          attributes: [
+            [require('sequelize').fn('DATE', require('sequelize').col('created_at')), 'date'],
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+          ],
+          group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
+          raw: true
+        }),
+        // Bot growth over last 7 days
+        Bot.findAll({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          },
+          attributes: [
+            [require('sequelize').fn('DATE', require('sequelize').col('created_at')), 'date'],
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+          ],
+          group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
+          raw: true
+        }),
+        // Message statistics
+        Feedback.findAll({
+          attributes: [
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied'],
+            [require('sequelize').fn('AVG', require('sequelize').literal('CASE WHEN replied_at IS NOT NULL THEN julianday(replied_at) - julianday(created_at) END')), 'avg_reply_time']
+          ],
+          raw: true
+        }),
+        // Broadcast statistics
+        BroadcastHistory.findAll({
+          attributes: [
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+            [require('sequelize').fn('SUM', require('sequelize').col('total_users')), 'total_recipients'],
+            [require('sequelize').fn('AVG', require('sequelize').col('successful_sends')), 'avg_success_rate']
+          ],
+          raw: true
+        })
+      ]);
+
+      const totalMessages = parseInt(messageStats[0]?.total || 0);
+      const repliedMessages = parseInt(messageStats[0]?.replied || 0);
+      const avgReplyTime = parseFloat(messageStats[0]?.avg_reply_time || 0) * 24 * 60; // Convert to minutes
+      const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
+      const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
+      const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
+
+      let reportsMessage = `📈 *Detailed Platform Reports*\n\n` +
+        `*Message Analytics:*\n` +
+        `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
+        `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
+        `📊 Reply Rate: ${totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0}%\n` +
+        `⏱️ Avg Reply Time: ${avgReplyTime.toFixed(1)} minutes\n\n` +
+        
+        `*Broadcast Performance:*\n` +
+        `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n` +
+        `👥 Total Recipients: ${formatNumber(totalRecipients)}\n` +
+        `📈 Avg Success Rate: ${avgSuccessRate.toFixed(1)}%\n\n` +
+        
+        `*Growth Trends (Last 7 Days):*\n`;
+
+      // Add user growth trends
+      if (userGrowth.length > 0) {
+        reportsMessage += `👥 User Growth: ${userGrowth.length} days with new users\n`;
+      } else {
+        reportsMessage += `👥 User Growth: No new users in last 7 days\n`;
+      }
+
+      // Add bot growth trends
+      if (botGrowth.length > 0) {
+        reportsMessage += `🤖 Bot Growth: ${botGrowth.length} days with new bots\n`;
+      } else {
+        reportsMessage += `🤖 Bot Growth: No new bots in last 7 days\n`;
+      }
+
+      reportsMessage += `\n*Platform Insights:*\n` +
+        `📱 Active User Rate: ${((userGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} users/day\n` +
+        `🚀 Bot Creation Rate: ${((botGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} bots/day`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
+        [Markup.button.callback('📋 Export Data', 'platform_export_users')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(reportsMessage, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(reportsMessage, keyboard);
+      }
+
+    } catch (error) {
+      console.error('Detailed reports error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading detailed reports');
+      } else {
+        await ctx.reply('❌ Error loading detailed reports');
+      }
+    }
+  }
+
+  // Bot toggle feature
+  static async startToggleBot(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'toggle_bot',
+        step: 'awaiting_bot_id'
+      });
+
+      const message = `🔄 *Toggle Bot Status*\n\n` +
+        `Please provide the bot ID or username to toggle:\n\n` +
+        `*Examples:*\n` +
+        `• 123 (Bot ID)\n` +
+        `• @botusername\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+          ])
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, 
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+          ])
+        );
+      }
+
+    } catch (error) {
+      console.error('Start toggle bot error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error starting toggle process');
+      } else {
+        await ctx.reply('❌ Error starting toggle process');
+      }
+    }
+  }
+
+  // Bot deletion feature
+  static async startDeleteBot(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'delete_bot',
+        step: 'awaiting_bot_id'
+      });
+
+      const message = `🗑️ *Delete Bot*\n\n` +
+        `⚠️ *Warning:* This will permanently delete the bot and all its data!\n\n` +
+        `Please provide the bot ID or username to delete:\n\n` +
+        `*Examples:*\n` +
+        `• 123 (Bot ID)\n` +
+        `• @botusername\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+          ])
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, 
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+          ])
+        );
+      }
+
+    } catch (error) {
+      console.error('Start delete bot error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error starting delete process');
+      } else {
+        await ctx.reply('❌ Error starting delete process');
+      }
+    }
+  }
+
+  // User export feature
+  static async exportUsers(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      const users = await User.findAll({
+        attributes: ['telegram_id', 'username', 'first_name', 'last_name', 'is_banned', 'created_at', 'last_active'],
+        order: [['created_at', 'DESC']]
+      });
+
+      if (users.length === 0) {
+        await ctx.answerCbQuery('❌ No users to export');
+        return;
+      }
+
+      // Create CSV content
+      let csvContent = 'User ID,Username,First Name,Last Name,Status,Created At,Last Active\n';
+      
+      users.forEach(user => {
+        const status = user.is_banned ? 'Banned' : 'Active';
+        const createdAt = user.created_at.toISOString().split('T')[0];
+        const lastActive = user.last_active ? user.last_active.toISOString().split('T')[0] : 'Never';
+        
+        csvContent += `${user.telegram_id},${user.username || ''},${user.first_name || ''},${user.last_name || ''},${status},${createdAt},${lastActive}\n`;
+      });
+
+      // Send as file
+      await ctx.replyWithDocument({
+        source: Buffer.from(csvContent, 'utf8'),
+        filename: `platform_users_${new Date().toISOString().split('T')[0]}.csv`
+      }, {
+        caption: `📋 *User Export Complete*\n\n` +
+                `*Total Users:* ${formatNumber(users.length)}\n` +
+                `*Export Date:* ${new Date().toLocaleDateString()}\n\n` +
+                `The file contains all user data in CSV format.`,
+        parse_mode: 'Markdown'
+      });
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('✅ User export completed');
+      }
+
+    } catch (error) {
+      console.error('Export users error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error exporting users');
+      } else {
+        await ctx.reply('❌ Error exporting users');
+      }
+    }
+  }
+
   // Handle platform admin text input
   static async handlePlatformAdminInput(ctx) {
     try {
@@ -705,6 +1104,10 @@ class PlatformAdminHandler {
         await this.sendPlatformBroadcast(ctx, input);
       } else if ((session.action === 'ban_user' || session.action === 'unban_user') && session.step === 'awaiting_user_id') {
         await this.processUserBanAction(ctx, session.action, input);
+      } else if (session.action === 'toggle_bot' && session.step === 'awaiting_bot_id') {
+        await this.processBotToggle(ctx, input);
+      } else if (session.action === 'delete_bot' && session.step === 'awaiting_bot_id') {
+        await this.processBotDeletion(ctx, input);
       }
 
       platformAdminSessions.delete(userId);
@@ -751,7 +1154,18 @@ class PlatformAdminHandler {
           ban_reason: 'Banned by platform admin'
         });
 
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned.`);
+        // Stop all bots owned by this user
+        const userBots = await Bot.findAll({ where: { owner_id: targetUser.telegram_id } });
+        for (const bot of userBots) {
+          try {
+            await MiniBotManager.stopBot(bot.id);
+            await bot.update({ is_active: false });
+          } catch (error) {
+            console.error(`Failed to stop bot ${bot.id}:`, error);
+          }
+        }
+
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned and all their bots have been deactivated.`);
 
       } else if (action === 'unban_user') {
         if (!targetUser.is_banned) {
@@ -777,6 +1191,112 @@ class PlatformAdminHandler {
     }
   }
 
+  // Process bot toggle
+  static async processBotToggle(ctx, input) {
+    try {
+      let targetBot;
+
+      // Parse bot input
+      if (/^\d+$/.test(input)) {
+        const botId = parseInt(input);
+        targetBot = await Bot.findByPk(botId);
+      } else {
+        const botUsername = input.replace('@', '').trim();
+        targetBot = await Bot.findOne({ where: { bot_username: botUsername } });
+      }
+
+      if (!targetBot) {
+        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
+        return;
+      }
+
+      const newStatus = !targetBot.is_active;
+
+      if (newStatus) {
+        // Activate bot
+        try {
+          await MiniBotManager.startBot(targetBot.id);
+          await targetBot.update({ is_active: true });
+          await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
+        } catch (error) {
+          await ctx.reply(`❌ Failed to activate bot: ${error.message}`);
+          return;
+        }
+      } else {
+        // Deactivate bot
+        try {
+          await MiniBotManager.stopBot(targetBot.id);
+          await targetBot.update({ is_active: false });
+          await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been deactivated.`);
+        } catch (error) {
+          await ctx.reply(`❌ Failed to deactivate bot: ${error.message}`);
+          return;
+        }
+      }
+
+      // Return to bot management
+      await this.botManagement(ctx);
+
+    } catch (error) {
+      console.error('Process bot toggle error:', error);
+      await ctx.reply('❌ Error toggling bot status.');
+    }
+  }
+
+  // Process bot deletion
+  static async processBotDeletion(ctx, input) {
+    try {
+      let targetBot;
+
+      // Parse bot input
+      if (/^\d+$/.test(input)) {
+        const botId = parseInt(input);
+        targetBot = await Bot.findByPk(botId);
+      } else {
+        const botUsername = input.replace('@', '').trim();
+        targetBot = await Bot.findOne({ where: { bot_username: botUsername } });
+      }
+
+      if (!targetBot) {
+        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
+        return;
+      }
+
+      // Stop bot first
+      try {
+        await MiniBotManager.stopBot(targetBot.id);
+      } catch (error) {
+        console.error('Error stopping bot during deletion:', error);
+      }
+
+      // Delete bot from database
+      const botName = targetBot.bot_name;
+      const botUsername = targetBot.bot_username;
+      
+      await targetBot.destroy();
+
+      await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted.`);
+
+      // Return to bot management
+      await this.botManagement(ctx);
+
+    } catch (error) {
+      console.error('Process bot deletion error:', error);
+      await ctx.reply('❌ Error deleting bot.');
+    }
+  }
+
+  // Check if user is banned and block access
+  static async checkUserBan(userId) {
+    try {
+      const user = await User.findOne({ where: { telegram_id: userId } });
+      return user ? user.is_banned : false;
+    } catch (error) {
+      console.error('Check user ban error:', error);
+      return false;
+    }
+  }
+
   // Check if user is in platform admin session
   static isInPlatformAdminSession(userId) {
     return platformAdminSessions.has(userId);
@@ -787,6 +1307,10 @@ class PlatformAdminHandler {
 PlatformAdminHandler.registerCallbacks = (bot) => {
   // Dashboard and main navigation
   bot.action('platform_dashboard', async (ctx) => {
+    await PlatformAdminHandler.platformDashboard(ctx);
+  });
+
+  bot.action('platform_dashboard_refresh', async (ctx) => {
     await PlatformAdminHandler.platformDashboard(ctx);
   });
 
@@ -831,27 +1355,27 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.startUnbanUser(ctx);
   });
 
-  // Analytics and stats
+  // Analytics and stats - IMPLEMENTED FEATURES
   bot.action('platform_user_stats', async (ctx) => {
-    await ctx.answerCbQuery('📊 User statistics feature coming soon!');
+    await PlatformAdminHandler.userStatistics(ctx);
   });
 
   bot.action('platform_detailed_reports', async (ctx) => {
-    await ctx.answerCbQuery('📈 Detailed reports feature coming soon!');
+    await PlatformAdminHandler.detailedReports(ctx);
   });
 
-  // Bot management actions
+  // Bot management actions - IMPLEMENTED FEATURES
   bot.action('platform_toggle_bot', async (ctx) => {
-    await ctx.answerCbQuery('🔄 Bot toggle feature coming soon!');
+    await PlatformAdminHandler.startToggleBot(ctx);
   });
 
   bot.action('platform_delete_bot', async (ctx) => {
-    await ctx.answerCbQuery('🗑️ Bot deletion feature coming soon!');
+    await PlatformAdminHandler.startDeleteBot(ctx);
   });
 
-  // Export features
+  // Export features - IMPLEMENTED FEATURES
   bot.action('platform_export_users', async (ctx) => {
-    await ctx.answerCbQuery('📋 User export feature coming soon!');
+    await PlatformAdminHandler.exportUsers(ctx);
   });
 };
 

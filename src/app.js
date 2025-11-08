@@ -41,6 +41,20 @@ class MetaBotCreator {
   }
   
   setupHandlers() {
+    this.bot.use(async (ctx, next) => {
+  // Skip ban check for platform admin
+  if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
+    return next();
+  }
+  
+  // Check if user is banned
+  if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
+    await ctx.reply('🚫 Your account has been banned from using this platform.');
+    return;
+  }
+  
+  return next();
+});
     console.log('🔄 Setting up bot handlers...');
     
     this.bot.use(async (ctx, next) => {
