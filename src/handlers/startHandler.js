@@ -1,6 +1,6 @@
 ﻿const { Markup } = require('telegraf');
 const User = require('../models/User');
-const Bot = require('../models/Bot');
+const { userOwnsBots, isBotOwnerOrCreator } = require('../utils/helpers');
 
 const startHandler = async (ctx) => {
   try {
@@ -16,8 +16,9 @@ const startHandler = async (ctx) => {
       last_active: new Date()
     });
 
-    // Check if user has bot access (owns bots, is admin, or is platform creator)
-    const hasBotAccess = await User.hasBotAccess(user.id);
+    // Check if user owns any bots
+    const ownsBots = await userOwnsBots(user.id);
+    const isOwnerOrCreator = await isBotOwnerOrCreator(user.id);
 
     const welcomeMessage = `🤖 *Welcome to MarCreatorBot!*\n\n` +
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
@@ -39,17 +40,15 @@ const startHandler = async (ctx) => {
       `/terms - Terms of Service\n` +
       `/privacy - Privacy Policy`;
 
-    // Create different keyboards based on user permissions
+    // Create different keyboard based on user role
     let keyboard;
-    
-    if (hasBotAccess) {
-      // ADMIN/OWNER MENU - Show all options
+    if (isOwnerOrCreator) {
+      // Full menu for bot owners and creator
       keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
-        [Markup.button.callback('📊 My Bots Dashboard', 'my_bots')],
         [
-          Markup.button.callback('❓ Admin Help', 'help'),
-          Markup.button.callback('⭐ Features', 'features')
+          Markup.button.callback('📊 My Bots Dashboard', 'my_bots'),
+          Markup.button.callback('❓ Help Guide', 'help')
         ],
         [
           Markup.button.callback('🔒 Privacy', 'privacy_policy'),
@@ -57,11 +56,11 @@ const startHandler = async (ctx) => {
         ]
       ]);
     } else {
-      // REGULAR USER MENU - Limited options
+      // Limited menu for regular users
       keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
         [
-          Markup.button.callback('❓ Get Help', 'help_user'),
+          Markup.button.callback('❓ Help Guide', 'help'),
           Markup.button.callback('⭐ Features', 'features')
         ],
         [
@@ -84,15 +83,17 @@ const startHandler = async (ctx) => {
   } catch (error) {
     console.error('Start handler error:', error);
     
-    // Fallback with basic menu
+    // Fallback
     try {
       await ctx.reply(
         `🤖 Welcome to MarCreatorBot!\n\n` +
         `Create and manage Telegram bots without coding.\n\n` +
+        `All management happens in your mini-bots!\n\n` +
+        `Legal: /privacy & /terms\n\n` +
         `Use the buttons below:`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🚀 Create Bot', 'create_bot')],
-          [Markup.button.callback('❓ Help', 'help_user')]
+          [Markup.button.callback('❓ Help', 'help')]
         ])
       );
     } catch (fallbackError) {
@@ -104,104 +105,100 @@ const startHandler = async (ctx) => {
   }
 };
 
-// NEW: Separate help handler for regular users
-const helpUserHandler = async (ctx) => {
-  try {
-    const helpMessage = `🤖 *MarCreatorBot - User Help*\n\n` +
-      `*What is MarCreatorBot?*\n` +
-      `A platform to create and manage your own Telegram bots without any coding knowledge!\n\n` +
-      `*🚀 Getting Started:*\n` +
-      `1. Create a bot via @BotFather\n` +
-      `2. Use /createbot command here\n` +
-      `3. Start managing your bot immediately!\n\n` +
-      `*💡 What You Can Do:*\n` +
-      `• Create customer support bots\n` +
-      `• Build community management bots\n` +
-      `• Set up automated messaging\n` +
-      `• Manage multiple admins\n` +
-      `• Send broadcasts to all users\n\n` +
-      `*📚 Need More Help?*\n` +
-      `• Contact support: @MarCreatorSupportBot\n` +
-      `• Watch tutorial videos\n` +
-      `• Read our documentation\n\n` +
-      `*Ready to create your first bot?*`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create First Bot', 'create_bot')],
-      [Markup.button.callback('⭐ See Features', 'features')],
-      [Markup.button.callback('🔙 Main Menu', 'start')]
-    ]);
-
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(helpMessage, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } else {
-      await ctx.replyWithMarkdown(helpMessage, keyboard);
-    }
-    
-  } catch (error) {
-    console.error('User help handler error:', error);
-    await ctx.reply(
-      `🤖 MarCreatorBot Help\n\n` +
-      `Create your own Telegram bots easily!\n\n` +
-      `Use /createbot to get started.`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 Create Bot', 'create_bot')],
-        [Markup.button.callback('🔙 Main Menu', 'start')]
-      ])
-    );
-  }
-};
-
-// Existing help handler for admins (remains the same)
 const helpHandler = async (ctx) => {
   try {
-    const helpMessage = `📖 *MarCreatorBot - Complete Help Guide*\n\n` +
-      `*🚀 Getting Started:*\n` +
-      `1. Create bot via @BotFather\n` +
-      `2. Use /createbot to add it here\n` +
-      `3. Go to your mini-bot and use /dashboard\n` +
-      `4. Start managing immediately!\n\n` +
-      `*🔧 Main Commands (in this bot):*\n` +
-      `/start - Show main menu\n` +
-      `/createbot - Create new mini-bot\n` +
-      `/mybots - List your bots\n` +
-      `/help - This help message\n` +
-      `/privacy - Privacy Policy\n` +
-      `/terms - Terms of Service\n\n` +
-      `*🤖 Mini-Bot Management:*\n` +
-      `• Users message your mini-bot\n` +
-      `• You get INSTANT notifications\n` +
-      `• Reply directly from notifications\n` +
-      `• Use /dashboard in mini-bot for full features\n\n` +
-      `*📊 Management Features (in mini-bots):*\n` +
-      `/dashboard - Full admin panel\n` +
-      `/messages - View all user messages\n` +
-      `/broadcast - Send to all users\n` +
-      `/stats - View statistics\n` +
-      `/admins - Manage team (owners only)\n\n` +
-      `*💡 Pro Tips:*\n` +
-      `• Use bot commands/Menu for quick access\n` +
-      `• Click notification buttons to reply instantly\n` +
-      `• Add co-admins to help manage\n` +
-      `• Broadcast important announcements\n\n` +
-      `*🔒 Legal & Support:*\n` +
-      `/privacy - View Privacy Policy\n` +
-      `/terms - View Terms of Service\n` +
-      `Contact @MarCreatorSupportBot for help`;
+    const userId = ctx.from.id;
+    const isOwnerOrCreator = await isBotOwnerOrCreator(userId);
+    
+    let helpMessage;
+    
+    if (isOwnerOrCreator) {
+      // Full help for bot owners
+      helpMessage = `📖 *MarCreatorBot - Complete Help Guide*\n\n` +
+        `*🚀 Getting Started:*\n` +
+        `1. Create bot via @BotFather\n` +
+        `2. Use /createbot to add it here\n` +
+        `3. Go to your mini-bot and use /dashboard\n` +
+        `4. Start managing immediately!\n\n` +
+        `*🔧 Main Commands (in this bot):*\n` +
+        `/start - Show main menu\n` +
+        `/createbot - Create new mini-bot\n` +
+        `/mybots - List your bots\n` +
+        `/help - This help message\n` +
+        `/privacy - Privacy Policy\n` +
+        `/terms - Terms of Service\n\n` +
+        `*🤖 Mini-Bot Management:*\n` +
+        `• Users message your mini-bot\n` +
+        `• You get INSTANT notifications\n` +
+        `• Reply directly from notifications\n` +
+        `• Use /dashboard in mini-bot for full features\n\n` +
+        `*📊 Management Features (in mini-bots):*\n` +
+        `/dashboard - Full admin panel\n` +
+        `/messages - View all user messages\n` +
+        `/broadcast - Send to all users\n` +
+        `/stats - View statistics\n` +
+        `/admins - Manage team (owners only)\n\n` +
+        `*💡 Pro Tips:*\n` +
+        `• Use bot commands/Menu for quick access\n` +
+        `• Click notification buttons to reply instantly\n` +
+        `• Add co-admins to help manage\n` +
+        `• Broadcast important announcements\n\n` +
+        `*🔒 Legal & Support:*\n` +
+        `/privacy - View Privacy Policy\n` +
+        `/terms - View Terms of Service\n` +
+        `Contact @MarCreatorSupportBot for help`;
+    } else {
+      // Basic help for regular users
+      helpMessage = `📖 *MarCreatorBot - Getting Started Guide*\n\n` +
+        `*🚀 Welcome! Here's how to create your first bot:*\n\n` +
+        `*Step 1: Create a Bot with @BotFather*\n` +
+        `• Start a chat with @BotFather\n` +
+        `• Send /newbot command\n` +
+        `• Choose a name for your bot\n` +
+        `• Choose a username (must end with 'bot')\n` +
+        `• Copy the bot token provided\n\n` +
+        `*Step 2: Add Your Bot Here*\n` +
+        `• Use /createbot command\n` +
+        `• Paste your bot token\n` +
+        `• Choose a display name\n` +
+        `• Your bot will be ready instantly!\n\n` +
+        `*Step 3: Manage Your Bot*\n` +
+        `• Users can start chatting with your bot\n` +
+        `• You'll get instant notifications\n` +
+        `• Reply directly to user messages\n` +
+        `• Use commands in your mini-bot for management\n\n` +
+        `*🎯 What You Can Do:*\n` +
+        `• Customer support bot\n` +
+        `• Community announcements\n` +
+        `• Business communication\n` +
+        `• Personal assistant\n\n` +
+        `*🔒 Legal & Privacy:*\n` +
+        `We protect your data and ensure secure operation.\n\n` +
+        `Ready to create your first bot?`;
+    }
 
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
-      [Markup.button.callback('📊 My Bots Dashboard', 'my_bots')],
-      [
-        Markup.button.callback('🔒 Privacy', 'privacy_policy'),
-        Markup.button.callback('📋 Terms', 'terms_of_service')
-      ],
-      [Markup.button.callback('🔙 Main Menu', 'start')]
-    ]);
+    let keyboard;
+    if (isOwnerOrCreator) {
+      keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
+        [Markup.button.callback('📊 My Bots Dashboard', 'my_bots')],
+        [
+          Markup.button.callback('🔒 Privacy', 'privacy_policy'),
+          Markup.button.callback('📋 Terms', 'terms_of_service')
+        ],
+        [Markup.button.callback('🔙 Main Menu', 'start')]
+      ]);
+    } else {
+      keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
+        [Markup.button.callback('⭐ See Features', 'features')],
+        [
+          Markup.button.callback('🔒 Privacy', 'privacy_policy'),
+          Markup.button.callback('📋 Terms', 'terms_of_service')
+        ],
+        [Markup.button.callback('🔙 Main Menu', 'start')]
+      ]);
+    }
 
     if (ctx.updateType === 'callback_query') {
       await ctx.editMessageText(helpMessage, {
@@ -217,14 +214,8 @@ const helpHandler = async (ctx) => {
     console.error('Help handler error:', error);
     await ctx.reply(
       `🤖 MarCreatorBot Help\n\n` +
-      `Main Commands:\n` +
-      `/start - Main menu\n` +
-      `/createbot - Create bot\n` +
-      `/mybots - List bots\n` +
-      `/help - Help guide\n` +
-      `/privacy - Privacy Policy\n` +
-      `/terms - Terms of Service\n\n` +
-      `Manage bots in the mini-bots using /dashboard`,
+      `Use /createbot to make your first bot!\n\n` +
+      `Need help? Contact @MarCreatorSupportBot`,
       Markup.inlineKeyboard([
         [Markup.button.callback('🚀 Create Bot', 'create_bot')],
         [Markup.button.callback('🔙 Main Menu', 'start')]
@@ -335,7 +326,7 @@ const defaultHandler = async (ctx) => {
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
       [Markup.button.callback('📊 My Bots', 'my_bots')],
-      [Markup.button.callback('❓ Help', 'help_user')],
+      [Markup.button.callback('❓ Help', 'help')],
       [Markup.button.callback('⭐ Features', 'features')],
       [
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
@@ -353,7 +344,6 @@ const defaultHandler = async (ctx) => {
 module.exports = { 
   startHandler, 
   helpHandler, 
-  helpUserHandler, // Add this new export
   featuresHandler,
   defaultHandler 
 };

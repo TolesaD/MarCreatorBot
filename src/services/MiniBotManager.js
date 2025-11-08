@@ -15,14 +15,6 @@ class MiniBotManager {
     this.maxInitializationAttempts = 5;
   }
   
-  // Add platform bot detection method
-  isPlatformBot = (botRecord) => {
-    // Check if this is the MarCreatorSupportBot or other platform bots
-    const platformBots = ['MarCreatorSupportBot', 'MarCreatorBot']; // Add your platform bot usernames
-    return platformBots.includes(botRecord.bot_username) || 
-           platformBots.some(name => botRecord.bot_name.includes(name));
-  }
-  
   deleteAfterDelay = async (ctx, messageId, delay = 5000) => {
     try {
       setTimeout(async () => {
@@ -49,77 +41,73 @@ class MiniBotManager {
     return result;
   }
   
-  async _initializeAllBots() {
-    try {
-      console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
-      
-      await this.clearAllBots();
-      
-      console.log('⏳ Waiting for database to be fully ready...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const activeBots = await Bot.findAll({ where: { is_active: true } });
-      
-      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-      
-      if (activeBots.length === 0) {
-        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
-        this.isInitialized = true;
-        return 0;
-      }
-      
-      let successCount = 0;
-      let failedCount = 0;
-      
-      for (const botRecord of activeBots) {
-        try {
-          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-          
-          // Check if this is a platform bot
-          const isPlatformBot = this.isPlatformBot(botRecord);
-          if (isPlatformBot) {
-            console.log(`⭐ Platform bot detected: ${botRecord.bot_name}`);
-          }
-          
-          // Don't use timeout - let each bot initialize at its own pace
-          const success = await this.initializeBotWithEncryptionCheck(botRecord);
-          
-          if (success) {
-            successCount++;
-            console.log(`✅ Initialization started: ${botRecord.bot_name}`);
-          } else {
-            failedCount++;
-            console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
-          }
-          
-          // Small delay between bots
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-        } catch (error) {
-          console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-          failedCount++;
-          // Continue with next bot even if this one fails
-          console.log(`🔄 Continuing with next bot despite error...`);
-        }
-      }
-      
-      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
-      
-      // Wait a bit for bots to finish launching
-      console.log('⏳ Waiting for bots to complete launch...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      
+// In your MiniBotManager.js, update the _initializeAllBots method:
+
+async _initializeAllBots() {
+  try {
+    console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
+    
+    await this.clearAllBots();
+    
+    console.log('⏳ Waiting for database to be fully ready...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const activeBots = await Bot.findAll({ where: { is_active: true } });
+    
+    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+    
+    if (activeBots.length === 0) {
+      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
       this.isInitialized = true;
-      this.debugActiveBots();
-      
-      return successCount;
-      
-    } catch (error) {
-      console.error('💥 CRITICAL: Error initializing all bots:', error);
-      this.isInitialized = false;
       return 0;
     }
+    
+    let successCount = 0;
+    let failedCount = 0;
+    
+    for (const botRecord of activeBots) {
+      try {
+        console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+        
+        // Don't use timeout - let each bot initialize at its own pace
+        const success = await this.initializeBotWithEncryptionCheck(botRecord);
+        
+        if (success) {
+          successCount++;
+          console.log(`✅ Initialization started: ${botRecord.bot_name}`);
+        } else {
+          failedCount++;
+          console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
+        }
+        
+        // Small delay between bots
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
+        failedCount++;
+        // Continue with next bot even if this one fails
+        console.log(`🔄 Continuing with next bot despite error...`);
+      }
+    }
+    
+    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+    
+    // Wait a bit for bots to finish launching
+    console.log('⏳ Waiting for bots to complete launch...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
+    this.isInitialized = true;
+    this.debugActiveBots();
+    
+    return successCount;
+    
+  } catch (error) {
+    console.error('💥 CRITICAL: Error initializing all bots:', error);
+    this.isInitialized = false;
+    return 0;
   }
+}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {
@@ -204,14 +192,10 @@ async initializeBot(botRecord) {
       record: botRecord,
       token: token,
       launchedAt: new Date(),
-      status: 'launching', // Mark as launching
-      isPlatformBot: this.isPlatformBot(botRecord) // Store platform bot status
+      status: 'launching' // Mark as launching
     });
     
     console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-    
-    // Set bot commands based on whether it's a platform bot or regular bot
-    await this.setBotCommands(bot, token);
     
     // Launch without waiting for completion
     bot.launch({
@@ -278,35 +262,16 @@ async initializeBot(botRecord) {
   async setBotCommands(bot, token) {
     try {
       console.log('🔄 Setting bot commands for menu...');
-      
-      // Check if this is a platform bot
-      const isPlatformBot = this.isPlatformBot(bot.context?.metaBotInfo?.botRecord);
-      
-      if (isPlatformBot) {
-        // Platform bot commands - can have special commands
-        await bot.telegram.setMyCommands([
-          { command: 'start', description: '🚀 Start the bot' },
-          { command: 'dashboard', description: '📊 Platform dashboard' },
-          { command: 'messages', description: '📨 View user messages' },
-          { command: 'broadcast', description: '📢 Send broadcast' },
-          { command: 'stats', description: '📈 Platform statistics' },
-          { command: 'admins', description: '👥 Manage platform admins' },
-          { command: 'help', description: '❓ Platform help' }
-        ]);
-        console.log('✅ Platform bot menu commands set successfully');
-      } else {
-        // Regular user bot commands
-        await bot.telegram.setMyCommands([
-          { command: 'start', description: '🚀 Start the bot' },
-          { command: 'dashboard', description: '📊 Admin dashboard' },
-          { command: 'messages', description: '📨 View user messages' },
-          { command: 'broadcast', description: '📢 Send broadcast' },
-          { command: 'stats', description: '📈 View statistics' },
-          { command: 'admins', description: '👥 Manage admins' },
-          { command: 'help', description: '❓ Get help' }
-        ]);
-        console.log('✅ Regular bot menu commands set successfully');
-      }
+      await bot.telegram.setMyCommands([
+        { command: 'start', description: '🚀 Start the bot' },
+        { command: 'dashboard', description: '📊 Admin dashboard' },
+        { command: 'messages', description: '📨 View user messages' },
+        { command: 'broadcast', description: '📢 Send broadcast' },
+        { command: 'stats', description: '📈 View statistics' },
+        { command: 'admins', description: '👥 Manage admins' },
+        { command: 'help', description: '❓ Get help' }
+      ]);
+      console.log('✅ Bot menu commands set successfully');
     } catch (error) {
       console.error('❌ Failed to set bot commands:', error.message);
     }
@@ -317,12 +282,6 @@ async initializeBot(botRecord) {
     
     bot.use(async (ctx, next) => {
       ctx.miniBotManager = this;
-      
-      // Check if this is a platform bot for special handling
-      if (ctx.metaBotInfo) {
-        ctx.isPlatformBot = this.isPlatformBot(ctx.metaBotInfo.botRecord);
-      }
-      
       return next();
     });
     
@@ -367,8 +326,7 @@ async initializeBot(botRecord) {
       console.log('❌ No active bots found in memory!');
     } else {
       for (const [dbId, botData] of this.activeBots.entries()) {
-        const platformTag = botData.isPlatformBot ? ' [PLATFORM]' : '';
-        console.log(`🤖 Bot: ${botData.record.bot_name}${platformTag} | DB ID: ${dbId} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
+        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
       }
     }
   }
@@ -394,7 +352,6 @@ async initializeBot(botRecord) {
         console.log(`   - Bot ID: ${botRecord.id}`);
         console.log(`   - Bot Name: ${botRecord.bot_name}`);
         console.log(`   - Is Active: ${botRecord.is_active}`);
-        console.log(`   - Is Platform Bot: ${this.isPlatformBot(botRecord)}`);
         
         const token = botRecord.getDecryptedToken();
         console.log(`   - Token available: ${!!token}`);

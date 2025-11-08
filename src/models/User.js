@@ -28,10 +28,6 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  is_platform_creator: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
   language_code: {
     type: DataTypes.STRING(10),
     allowNull: true
@@ -56,31 +52,5 @@ const User = sequelize.define('User', {
     }
   ]
 });
-
-// Add method to check if user is platform creator
-User.isPlatformCreator = async function(telegramId) {
-  const user = await this.findOne({ where: { telegram_id: telegramId } });
-  return user ? user.is_platform_creator : false;
-};
-
-// Add method to check if user has bot access (owns bots or is admin)
-User.hasBotAccess = async function(telegramId) {
-  const user = await this.findOne({ where: { telegram_id: telegramId } });
-  if (!user) return false;
-  
-  // Platform creator has access to everything
-  if (user.is_platform_creator) return true;
-  
-  // Check if user owns any bots
-  const Bot = require('./Bot');
-  const ownedBots = await Bot.count({ where: { owner_id: telegramId } });
-  if (ownedBots > 0) return true;
-  
-  // Check if user is admin of any bots
-  const Admin = require('./Admin');
-  const adminBots = await Admin.count({ where: { admin_user_id: telegramId } });
-  
-  return adminBots > 0;
-};
 
 module.exports = User;

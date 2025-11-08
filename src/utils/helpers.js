@@ -2,6 +2,34 @@ const { Telegraf } = require('telegraf');
 const { Bot, Admin, UserLog, Feedback, BroadcastHistory } = require('../models');
 
 /**
+ * Check if user owns any mini-bots
+ */
+async function userOwnsBots(userId) {
+  try {
+    const userBots = await Bot.count({
+      where: { owner_id: userId }
+    });
+    return userBots > 0;
+  } catch (error) {
+    console.error('Error checking user bots:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if user is bot owner or platform creator
+ */
+async function isBotOwnerOrCreator(userId) {
+  // Platform creator (you)
+  if (userId === 1827785384) {
+    return true;
+  }
+  
+  // Check if user owns any bots
+  return await userOwnsBots(userId);
+}
+
+/**
  * Format number with commas
  */
 function formatNumber(num) {
@@ -179,6 +207,8 @@ function createOwnerPermissions() {
 }
 
 module.exports = {
+  userOwnsBots,
+  isBotOwnerOrCreator,
   formatNumber,
   escapeMarkdown,
   isValidToken, // Keep for basic format checks only
