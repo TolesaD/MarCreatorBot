@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE VERSION WITH OFFLINE HANDLING
+﻿// src/app.js - COMPLETE VERSION WITH FIXES
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -17,11 +17,10 @@ const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
-const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
+const { startHandler, helpHandler, featuresHandler, MaintenanceHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
-const { MaintenanceHandler } = require('./handlers/startHandler');
 
 class MetaBotCreator {
   constructor() {
@@ -158,59 +157,6 @@ class MetaBotCreator {
       }
     });
     
-    // Maintenance control commands (admin only)
-    this.bot.command('maintenance_on', async (ctx) => {
-      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        MaintenanceHandler.enableMaintenance();
-        await ctx.reply('🔧 *Maintenance mode ENABLED*\n\nAll user messages will be queued until maintenance is complete.', {
-          parse_mode: 'Markdown'
-        });
-      }
-    });
-
-    this.bot.command('maintenance_off', async (ctx) => {
-      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        MaintenanceHandler.disableMaintenance();
-        await ctx.reply('✅ *Maintenance mode DISABLED*\n\nProcessing any missed messages...', {
-          parse_mode: 'Markdown'
-        });
-      }
-    });
-
-    this.bot.command('maintenance_status', async (ctx) => {
-      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        const status = MaintenanceHandler.getMaintenanceStatus();
-        const modeStatus = status.isUnderMaintenance ? 'ENABLED 🔧' : 'DISABLED ✅';
-        
-        await ctx.reply(`🔧 *Maintenance Status*\n\n` +
-          `Mode: ${modeStatus}\n` +
-          `Missed Messages: ${status.missedMessagesCount}\n` +
-          `Start Time: ${status.maintenanceStartTime ? status.maintenanceStartTime.toLocaleString() : 'N/A'}`, {
-          parse_mode: 'Markdown'
-        });
-      }
-    });
-    
-    // Bot status command
-    this.bot.command('bot_status', async (ctx) => {
-      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        const botStatus = MaintenanceHandler.getBotStatus();
-        const { Bot } = require('./models');
-        const totalBots = await Bot.count();
-        const activeBots = await Bot.count({ where: { is_active: true } });
-        
-        await ctx.reply(`🤖 *Bot Status Report*\n\n` +
-          `*Uptime:* ${this.formatUptime()}\n` +
-          `*Last Restart:* ${botStatus.lastRestartTime.toLocaleString()}\n` +
-          `*Offline Messages Processed:* ${botStatus.offlineQueueSize}\n` +
-          `*Total Bots:* ${totalBots}\n` +
-          `*Active Bots:* ${activeBots}\n` +
-          `*System:* 🟢 Operational`, {
-          parse_mode: 'Markdown'
-        });
-      }
-    });
-    
     this.bot.command('createbot', createBotHandler);
     this.bot.command('mybots', myBotsHandler);
     this.bot.command('cancel', cancelCreationHandler);
@@ -218,24 +164,18 @@ class MetaBotCreator {
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
-
-      // Check if system is under maintenance (except for platform admin)
-      if (MaintenanceHandler.isUnderMaintenance() && !PlatformAdminHandler.isPlatformCreator(userId)) {
-        const wasHandled = await MaintenanceHandler.handleMessageDuringMaintenance(ctx);
-        if (wasHandled) return; // Stop further processing
-      }
-
+      
       // Check for platform admin sessions first
       if (PlatformAdminHandler.isInPlatformAdminSession(userId)) {
         await PlatformAdminHandler.handlePlatformAdminInput(ctx);
         return;
       }
-
+      
       if (messageText === '🚫 Cancel Creation') {
         await cancelCreationHandler(ctx);
         return;
       }
-
+      
       if (isInCreationSession(userId)) {
         const step = getCreationStep(userId);
         if (step === 'awaiting_token') {
@@ -245,13 +185,7 @@ class MetaBotCreator {
         }
         return;
       }
-
-      // Check if this message was sent during offline period
-      if (MaintenanceHandler.wasSentDuringOffline(ctx.message.date)) {
-        await MaintenanceHandler.handleOfflineMessage(ctx);
-        return;
-      }
-
+      
       await startHandler(ctx);
     });
     
@@ -527,15 +461,6 @@ class MetaBotCreator {
     }
   }
   
-  // Helper method to format uptime
-  formatUptime() {
-    const uptime = process.uptime();
-    const hours = Math.floor(uptime / 3600);
-    const minutes = Math.floor((uptime % 3600) / 60);
-    const seconds = Math.floor(uptime % 60);
-    return `${hours}h ${minutes}m ${seconds}s`;
-  }
-  
   start() {
     console.log('🚀 Starting main bot FIRST...');
     
@@ -547,7 +472,7 @@ class MetaBotCreator {
       }
     });
     
-    // Start main bot with offline message processing ENABLED
+    // Configure bot to process offline messages
     this.bot.launch({
       dropPendingUpdates: false, // ← CRITICAL: Set to FALSE to receive offline messages
       allowedUpdates: ['message', 'callback_query']
@@ -563,7 +488,6 @@ class MetaBotCreator {
         console.log('📋 Use /mybots to view your bots');
         console.log('👑 Use /platform for admin dashboard');
         console.log('🔄 Use /reinit to restart mini-bots');
-        console.log('🔧 Use /bot_status for system status');
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
         

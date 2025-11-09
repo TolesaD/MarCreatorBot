@@ -1,4 +1,4 @@
-// src/handlers/platformAdminHandler.js - COMPLETE OPTIMIZED VERSION
+// src/handlers/platformAdminHandler.js - FIXED COMPLETE VERSION
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory, Admin } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
@@ -144,8 +144,8 @@ class PlatformAdminHandler {
   // Optimized platform dashboard
   static async platformDashboard(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Platform admin access required.');
         return;
       }
@@ -159,7 +159,7 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(statsMessage);
       }
 
-      const stats = await this.getPlatformStats();
+      const stats = await PlatformAdminHandler.getPlatformStats();
 
       const dashboardMessage = `👑 *Platform Admin Dashboard*\n\n` +
         `📊 *Platform Statistics:*\n` +
@@ -191,7 +191,7 @@ class PlatformAdminHandler {
         } catch (error) {
           if (error.response?.error_code === 400 && 
               error.response.description.includes('message is not modified')) {
-            await this.safeAnswerCbQuery(ctx);
+            await PlatformAdminHandler.safeAnswerCbQuery(ctx);
             return;
           }
           throw error;
@@ -200,11 +200,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(dashboardMessage, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Platform dashboard error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading platform dashboard.');
     }
   }
@@ -212,8 +212,8 @@ class PlatformAdminHandler {
   // Optimized user management with faster queries
   static async userManagement(ctx, page = 1) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -278,11 +278,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('User management error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading users');
     }
   }
@@ -290,8 +290,8 @@ class PlatformAdminHandler {
   // Optimized bot management
   static async botManagement(ctx, page = 1) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -357,11 +357,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Bot management error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading bots');
     }
   }
@@ -369,8 +369,8 @@ class PlatformAdminHandler {
   // Fast ban management
   static async banManagement(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -414,11 +414,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Ban management error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading ban list');
     }
   }
@@ -426,13 +426,13 @@ class PlatformAdminHandler {
   // Start ban user process - optimized
   static async startBanUser(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
 
-      this.setSession(ctx.from.id, {
+      PlatformAdminHandler.setSession(ctx.from.id, {
         action: 'ban_user',
         step: 'awaiting_user_id'
       });
@@ -457,11 +457,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start ban user error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error starting ban process');
     }
   }
@@ -469,13 +469,13 @@ class PlatformAdminHandler {
   // Start unban user process - optimized
   static async startUnbanUser(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
 
-      this.setSession(ctx.from.id, {
+      PlatformAdminHandler.setSession(ctx.from.id, {
         action: 'unban_user',
         step: 'awaiting_user_id'
       });
@@ -500,11 +500,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start unban user error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error starting unban process');
     }
   }
@@ -512,15 +512,15 @@ class PlatformAdminHandler {
   // Platform broadcast - optimized
   static async startPlatformBroadcast(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
 
       const totalUsers = await User.count({ where: { is_banned: false } });
 
-      this.setSession(ctx.from.id, {
+      PlatformAdminHandler.setSession(ctx.from.id, {
         action: 'platform_broadcast',
         step: 'awaiting_message'
       });
@@ -544,11 +544,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start platform broadcast error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error starting broadcast');
     }
   }
@@ -556,7 +556,7 @@ class PlatformAdminHandler {
   // Send platform broadcast - optimized with better error handling
   static async sendPlatformBroadcast(ctx, message) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -690,8 +690,8 @@ class PlatformAdminHandler {
   // Advanced analytics - optimized
   static async advancedAnalytics(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -751,11 +751,11 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(analyticsMessage, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Advanced analytics error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading analytics');
     }
   }
@@ -763,8 +763,8 @@ class PlatformAdminHandler {
   // User statistics - optimized
   static async userStatistics(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -826,20 +826,20 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(statsMessage, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('User statistics error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading user statistics');
     }
   }
 
-  // Detailed reports feature - REQUIRED
+  // Detailed reports feature - optimized
   static async detailedReports(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -951,25 +951,25 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(reportsMessage, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Detailed reports error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error loading detailed reports');
     }
   }
 
-  // Start toggle bot process - REQUIRED
+  // Start toggle bot process
   static async startToggleBot(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
 
-      this.setSession(ctx.from.id, {
+      PlatformAdminHandler.setSession(ctx.from.id, {
         action: 'toggle_bot',
         step: 'awaiting_bot_id'
       });
@@ -994,25 +994,25 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start toggle bot error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error starting toggle process');
     }
   }
 
-  // Start delete bot process - REQUIRED
+  // Start delete bot process
   static async startDeleteBot(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
 
-      this.setSession(ctx.from.id, {
+      PlatformAdminHandler.setSession(ctx.from.id, {
         action: 'delete_bot',
         step: 'awaiting_bot_id'
       });
@@ -1038,20 +1038,20 @@ class PlatformAdminHandler {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start delete bot error:', error);
-      await this.safeAnswerCbQuery(ctx);
+      await PlatformAdminHandler.safeAnswerCbQuery(ctx);
       await ctx.reply('❌ Error starting delete process');
     }
   }
 
-  // User export feature - REQUIRED
+  // User export feature
   static async exportUsers(ctx) {
     try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await this.safeAnswerCbQuery(ctx);
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
         await ctx.reply('❌ Access denied');
         return;
       }
@@ -1100,6 +1100,41 @@ class PlatformAdminHandler {
       } else {
         await ctx.reply('❌ Error exporting users');
       }
+    }
+  }
+
+  // Handle platform admin text input - optimized
+  static async handlePlatformAdminInput(ctx) {
+    try {
+      const userId = ctx.from.id;
+      const session = PlatformAdminHandler.getSession(userId);
+
+      if (!session) return;
+
+      if (ctx.message.text === '/cancel') {
+        platformAdminSessions.delete(userId);
+        await ctx.reply('❌ Platform admin action cancelled.');
+        return;
+      }
+
+      const input = ctx.message.text.trim();
+
+      if (session.action === 'platform_broadcast' && session.step === 'awaiting_message') {
+        await PlatformAdminHandler.sendPlatformBroadcast(ctx, input);
+      } else if ((session.action === 'ban_user' || session.action === 'unban_user') && session.step === 'awaiting_user_id') {
+        await PlatformAdminHandler.processUserBanAction(ctx, session.action, input);
+      } else if (session.action === 'toggle_bot' && session.step === 'awaiting_bot_id') {
+        await PlatformAdminHandler.processBotToggle(ctx, input);
+      } else if (session.action === 'delete_bot' && session.step === 'awaiting_bot_id') {
+        await PlatformAdminHandler.processBotDeletion(ctx, input);
+      }
+
+      platformAdminSessions.delete(userId);
+
+    } catch (error) {
+      console.error('Platform admin input error:', error);
+      await ctx.reply('❌ Error processing platform admin action.');
+      platformAdminSessions.delete(ctx.from.id);
     }
   }
 
@@ -1182,42 +1217,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Handle platform admin text input - optimized
-  static async handlePlatformAdminInput(ctx) {
-    try {
-      const userId = ctx.from.id;
-      const session = this.getSession(userId);
-
-      if (!session) return;
-
-      if (ctx.message.text === '/cancel') {
-        platformAdminSessions.delete(userId);
-        await ctx.reply('❌ Platform admin action cancelled.');
-        return;
-      }
-
-      const input = ctx.message.text.trim();
-
-      if (session.action === 'platform_broadcast' && session.step === 'awaiting_message') {
-        await this.sendPlatformBroadcast(ctx, input);
-      } else if ((session.action === 'ban_user' || session.action === 'unban_user') && session.step === 'awaiting_user_id') {
-        await this.processUserBanAction(ctx, session.action, input);
-      } else if (session.action === 'toggle_bot' && session.step === 'awaiting_bot_id') {
-        await this.processBotToggle(ctx, input);
-      } else if (session.action === 'delete_bot' && session.step === 'awaiting_bot_id') {
-        await this.processBotDeletion(ctx, input);
-      }
-
-      platformAdminSessions.delete(userId);
-
-    } catch (error) {
-      console.error('Platform admin input error:', error);
-      await ctx.reply('❌ Error processing platform admin action.');
-      platformAdminSessions.delete(ctx.from.id);
-    }
-  }
-
-  // Process bot toggle - REQUIRED
+  // Process bot toggle
   static async processBotToggle(ctx, input) {
     try {
       let targetBot;
@@ -1274,7 +1274,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Process bot deletion - REQUIRED
+  // Process bot deletion
   static async processBotDeletion(ctx, input) {
     try {
       let targetBot;
@@ -1348,7 +1348,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Check if user is in platform admin session - REQUIRED BY app.js
+  // Check if user is in platform admin session
   static isInPlatformAdminSession(userId) {
     const session = platformAdminSessions.get(userId);
     if (!session) return false;
