@@ -1,11 +1,16 @@
-// src/handlers/platformAdminHandler.js - COMPLETE FIXED VERSION
+// src/handlers/platformAdminHandler.js - COMPLETE OPTIMIZED VERSION
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory, Admin } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
 const MiniBotManager = require('../services/MiniBotManager');
 
-// Store admin management sessions
+// Store admin management sessions with TTL
 const platformAdminSessions = new Map();
+const SESSION_TTL = 10 * 60 * 1000; // 10 minutes
+
+// Cache for frequently accessed data
+const cache = new Map();
+const CACHE_TTL = 30 * 1000; // 30 seconds
 
 class PlatformAdminHandler {
   
@@ -14,32 +19,70 @@ class PlatformAdminHandler {
     return userId === 1827785384; // Your user ID
   }
 
-  // Safe answerCbQuery wrapper
+  // Fast answerCbQuery with timeout protection
   static async safeAnswerCbQuery(ctx) {
     if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery();
+      try {
+        await Promise.race([
+          ctx.answerCbQuery(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 3000)
+          )
+        ]);
+      } catch (error) {
+        console.log('Callback query answer timeout or error:', error.message);
+      }
     }
   }
 
-  // Platform admin dashboard
-  static async platformDashboard(ctx) {
-    try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.reply('❌ Platform admin access required.');
-        return;
-      }
+  // Cache management
+  static setCache(key, data) {
+    cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
 
-      // Get comprehensive platform statistics
-      const [
-        totalUsers,
-        totalBotOwners,
-        totalBots,
-        activeBots,
-        totalMessages,
-        pendingMessages,
-        totalBroadcasts,
-        todayUsers
-      ] = await Promise.all([
+  static getCache(key) {
+    const item = cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() - item.timestamp > CACHE_TTL) {
+      cache.delete(key);
+      return null;
+    }
+    
+    return item.data;
+  }
+
+  // Session management with TTL
+  static setSession(userId, data) {
+    platformAdminSessions.set(userId, {
+      ...data,
+      timestamp: Date.now()
+    });
+  }
+
+  static getSession(userId) {
+    const session = platformAdminSessions.get(userId);
+    if (!session) return null;
+    
+    if (Date.now() - session.timestamp > SESSION_TTL) {
+      platformAdminSessions.delete(userId);
+      return null;
+    }
+    
+    return session;
+  }
+
+  // Fast platform statistics with caching
+  static async getPlatformStats() {
+    const cacheKey = 'platform_stats';
+    const cached = this.getCache(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const stats = await Promise.allSettled([
         User.count(),
         User.count({ 
           include: [{
@@ -56,22 +99,78 @@ class PlatformAdminHandler {
         User.count({
           where: {
             last_active: {
-              [require('sequelize').Op.gte]: new Date(new Date() - 24 * 60 * 60 * 1000)
+              [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
             }
           }
         })
       ]);
 
+      const result = {
+        totalUsers: stats[0].status === 'fulfilled' ? stats[0].value : 0,
+        totalBotOwners: stats[1].status === 'fulfilled' ? stats[1].value : 0,
+        totalBots: stats[2].status === 'fulfilled' ? stats[2].value : 0,
+        activeBots: stats[3].status === 'fulfilled' ? stats[3].value : 0,
+        totalMessages: stats[4].status === 'fulfilled' ? stats[4].value : 0,
+        pendingMessages: stats[5].status === 'fulfilled' ? stats[5].value : 0,
+        totalBroadcasts: stats[6].status === 'fulfilled' ? stats[6].value : 0,
+        todayUsers: stats[7].status === 'fulfilled' ? stats[7].value : 0
+      };
+
+      this.setCache(cacheKey, result);
+      return result;
+    } catch (error) {
+      console.error('Error getting platform stats:', error);
+      return {
+        totalUsers: 0, totalBotOwners: 0, totalBots: 0, activeBots: 0,
+        totalMessages: 0, pendingMessages: 0, totalBroadcasts: 0, todayUsers: 0
+      };
+    }
+  }
+
+  // Check if user is banned - REQUIRED BY app.js
+  static async checkUserBan(userId) {
+    try {
+      const user = await User.findOne({ 
+        where: { telegram_id: userId },
+        attributes: ['is_banned']
+      });
+      return user ? user.is_banned : false;
+    } catch (error) {
+      console.error('Check user ban error:', error);
+      return false;
+    }
+  }
+
+  // Optimized platform dashboard
+  static async platformDashboard(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Platform admin access required.');
+        return;
+      }
+
+      // Get stats with loading indicator
+      let statsMessage = `👑 *Platform Admin Dashboard*\n\n🔄 Loading statistics...`;
+      
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(statsMessage, { parse_mode: 'Markdown' });
+      } else {
+        await ctx.replyWithMarkdown(statsMessage);
+      }
+
+      const stats = await this.getPlatformStats();
+
       const dashboardMessage = `👑 *Platform Admin Dashboard*\n\n` +
         `📊 *Platform Statistics:*\n` +
-        `👥 Total Users: ${formatNumber(totalUsers)}\n` +
-        `👥 Active Today: ${formatNumber(todayUsers)}\n` +
-        `🤖 Bot Owners: ${formatNumber(totalBotOwners)}\n` +
-        `🤖 Total Bots: ${formatNumber(totalBots)}\n` +
-        `🟢 Active Bots: ${formatNumber(activeBots)}\n` +
-        `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-        `📨 Pending Messages: ${formatNumber(pendingMessages)}\n` +
-        `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n\n` +
+        `👥 Total Users: ${formatNumber(stats.totalUsers)}\n` +
+        `👥 Active Today: ${formatNumber(stats.todayUsers)}\n` +
+        `🤖 Bot Owners: ${formatNumber(stats.totalBotOwners)}\n` +
+        `🤖 Total Bots: ${formatNumber(stats.totalBots)}\n` +
+        `🟢 Active Bots: ${formatNumber(stats.activeBots)}\n` +
+        `💬 Total Messages: ${formatNumber(stats.totalMessages)}\n` +
+        `📨 Pending Messages: ${formatNumber(stats.pendingMessages)}\n` +
+        `📢 Total Broadcasts: ${formatNumber(stats.totalBroadcasts)}\n\n` +
         `*Admin Actions:*`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -90,45 +189,41 @@ class PlatformAdminHandler {
             ...keyboard
           });
         } catch (error) {
-          // If message content is the same, just answer callback query
-          if (error.response && error.response.error_code === 400 && 
+          if (error.response?.error_code === 400 && 
               error.response.description.includes('message is not modified')) {
-            await ctx.answerCbQuery('✅ Stats are up to date');
+            await this.safeAnswerCbQuery(ctx);
             return;
           }
           throw error;
         }
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(dashboardMessage, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('Platform dashboard error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading platform dashboard.');
-      } else {
-        await ctx.reply('❌ Error loading platform dashboard.');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading platform dashboard.');
     }
   }
 
-  // User management with pagination
+  // Optimized user management with faster queries
   static async userManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
       const limit = 10;
       const offset = (page - 1) * limit;
 
+      // Use faster query with only needed fields
       const { count, rows: users } = await User.findAndCountAll({
+        attributes: ['telegram_id', 'username', 'first_name', 'is_banned', 'last_active'],
         order: [['last_active', 'DESC']],
         limit,
         offset
@@ -146,15 +241,16 @@ class PlatformAdminHandler {
           `${user.first_name} (ID: ${user.telegram_id})`;
         
         const status = user.is_banned ? '🚫 BANNED' : '✅ Active';
+        const lastActive = user.last_active ? 
+          user.last_active.toLocaleDateString() : 'Never';
         
         message += `*${offset + index + 1}.* ${userInfo}\n` +
           `   Status: ${status}\n` +
-          `   Last Active: ${user.last_active.toLocaleDateString()}\n\n`;
+          `   Last Active: ${lastActive}\n\n`;
       });
 
       const keyboardButtons = [];
 
-      // Pagination buttons
       if (page > 1) {
         keyboardButtons.push(Markup.button.callback('⬅️ Previous', `platform_users:${page - 1}`));
       }
@@ -178,30 +274,25 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('User management error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading users');
-      } else {
-        await ctx.reply('❌ Error loading users');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading users');
     }
   }
 
-  // Bot management with detailed info
+  // Optimized bot management
   static async botManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
@@ -214,6 +305,7 @@ class PlatformAdminHandler {
           as: 'Owner',
           attributes: ['username', 'first_name', 'is_banned']
         }],
+        attributes: ['id', 'bot_name', 'bot_username', 'is_active', 'created_at', 'owner_id'],
         order: [['created_at', 'DESC']],
         limit,
         offset
@@ -240,7 +332,6 @@ class PlatformAdminHandler {
 
       const keyboardButtons = [];
 
-      // Pagination buttons
       if (page > 1) {
         keyboardButtons.push(Markup.button.callback('⬅️ Previous', `platform_bots:${page - 1}`));
       }
@@ -262,35 +353,31 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('Bot management error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading bots');
-      } else {
-        await ctx.reply('❌ Error loading bots');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading bots');
     }
   }
 
-  // Ban management
+  // Fast ban management
   static async banManagement(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
       const bannedUsers = await User.findAll({
         where: { is_banned: true },
+        attributes: ['telegram_id', 'username', 'first_name', 'banned_at', 'ban_reason'],
         order: [['banned_at', 'DESC']],
         limit: 15
       });
@@ -323,34 +410,29 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(message, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('Ban management error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading ban list');
-      } else {
-        await ctx.reply('❌ Error loading ban list');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading ban list');
     }
   }
 
-  // Start ban user process
+  // Start ban user process - optimized
   static async startBanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      platformAdminSessions.set(ctx.from.id, {
+      this.setSession(ctx.from.id, {
         action: 'ban_user',
         step: 'awaiting_user_id'
       });
@@ -362,45 +444,38 @@ class PlatformAdminHandler {
         `• @username\n\n` +
         `*Cancel:* Type /cancel`;
 
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_bans')]
+      ]);
+
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
-          ])
+          ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
-          ])
-        );
+        await ctx.replyWithMarkdown(message, keyboard);
       }
+
+      await this.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start ban user error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error starting ban process');
-      } else {
-        await ctx.reply('❌ Error starting ban process');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error starting ban process');
     }
   }
 
-  // Start unban user process
+  // Start unban user process - optimized
   static async startUnbanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      platformAdminSessions.set(ctx.from.id, {
+      this.setSession(ctx.from.id, {
         action: 'unban_user',
         step: 'awaiting_user_id'
       });
@@ -412,47 +487,40 @@ class PlatformAdminHandler {
         `• @username\n\n` +
         `*Cancel:* Type /cancel`;
 
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_bans')]
+      ]);
+
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
-          ])
+          ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
-          ])
-        );
+        await ctx.replyWithMarkdown(message, keyboard);
       }
+
+      await this.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start unban user error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error starting unban process');
-      } else {
-        await ctx.reply('❌ Error starting unban process');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error starting unban process');
     }
   }
 
-  // Platform broadcast
+  // Platform broadcast - optimized
   static async startPlatformBroadcast(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      const totalUsers = await User.count();
+      const totalUsers = await User.count({ where: { is_banned: false } });
 
-      platformAdminSessions.set(ctx.from.id, {
+      this.setSession(ctx.from.id, {
         action: 'platform_broadcast',
         step: 'awaiting_message'
       });
@@ -463,33 +531,29 @@ class PlatformAdminHandler {
         `Please type your broadcast message:\n\n` +
         `*Cancel:* Type /cancel`;
 
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
+      ]);
+
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
-          ])
+          ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
-          ])
-        );
+        await ctx.replyWithMarkdown(message, keyboard);
       }
+
+      await this.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start platform broadcast error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error starting broadcast');
-      } else {
-        await ctx.reply('❌ Error starting broadcast');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error starting broadcast');
     }
   }
 
-  // Send platform broadcast - FIXED: Handle platform broadcasts without bot_id foreign key constraint
+  // Send platform broadcast - optimized with better error handling
   static async sendPlatformBroadcast(ctx, message) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -499,7 +563,7 @@ class PlatformAdminHandler {
 
       const users = await User.findAll({
         attributes: ['telegram_id', 'username', 'first_name'],
-        where: { is_banned: false } // Don't send to banned users
+        where: { is_banned: false }
       });
 
       const progressMsg = await ctx.reply(
@@ -514,59 +578,73 @@ class PlatformAdminHandler {
       let successCount = 0;
       let failCount = 0;
       const failedUsers = [];
-
       const startTime = Date.now();
 
-      for (let i = 0; i < users.length; i++) {
-        const user = users[i];
-        try {
-          await ctx.telegram.sendMessage(user.telegram_id, message, {
-            parse_mode: 'Markdown'
-          });
-          successCount++;
-
-          // Update progress every 20 users or every 5 seconds
-          if (i % 20 === 0 || i === users.length - 1) {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const remaining = Math.ceil((users.length - i) / 20);
-            
-            await ctx.telegram.editMessageText(
-              ctx.chat.id,
-              progressMsg.message_id,
-              null,
-              `📢 *Platform Broadcast Progress*\n\n` +
-              `🔄 Sending to ${formatNumber(users.length)} users...\n` +
-              `✅ Sent: ${formatNumber(successCount)}\n` +
-              `❌ Failed: ${formatNumber(failCount)}\n` +
-              `⏰ Elapsed: ${elapsed}s | Remaining: ~${remaining}s`,
-              { parse_mode: 'Markdown' }
-            );
+      // Process in batches for better performance
+      const batchSize = 25;
+      for (let i = 0; i < users.length; i += batchSize) {
+        const batch = users.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (user) => {
+          try {
+            await ctx.telegram.sendMessage(user.telegram_id, message, {
+              parse_mode: 'Markdown'
+            });
+            return { success: true, user };
+          } catch (error) {
+            return { success: false, user, error: error.message };
           }
+        });
 
-          // Rate limiting: 30 messages per second max
-          if (i % 30 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        const results = await Promise.allSettled(batchPromises);
+        
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            const { success, user, error } = result.value;
+            if (success) {
+              successCount++;
+            } else {
+              failCount++;
+              failedUsers.push({
+                id: user.telegram_id,
+                username: user.username,
+                error: error
+              });
+            }
           }
-        } catch (error) {
-          failCount++;
-          failedUsers.push({
-            id: user.telegram_id,
-            username: user.username,
-            error: error.message
-          });
-          console.error(`Failed to send to user ${user.telegram_id}:`, error.message);
+        });
+
+        // Update progress
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const remaining = Math.ceil((users.length - i - batchSize) / 20);
+        
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          progressMsg.message_id,
+          null,
+          `📢 *Platform Broadcast Progress*\n\n` +
+          `🔄 Sending to ${formatNumber(users.length)} users...\n` +
+          `✅ Sent: ${formatNumber(successCount)}\n` +
+          `❌ Failed: ${formatNumber(failCount)}\n` +
+          `⏰ Elapsed: ${elapsed}s | Remaining: ~${remaining}s`,
+          { parse_mode: 'Markdown' }
+        );
+
+        // Rate limiting
+        if (i + batchSize < users.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
       const successRate = ((successCount / users.length) * 100).toFixed(1);
 
-      // Save broadcast history - FIXED: Use NULL for platform broadcasts and handle properly
+      // Save broadcast history
       try {
         await BroadcastHistory.create({
-          bot_id: null, // Use NULL for platform broadcasts
+          bot_id: null,
           sent_by: ctx.from.id,
-          message: message.substring(0, 1000), // Limit message length
+          message: message.substring(0, 1000),
           total_users: users.length,
           successful_sends: successCount,
           failed_sends: failCount,
@@ -574,7 +652,6 @@ class PlatformAdminHandler {
         });
       } catch (dbError) {
         console.error('Failed to save broadcast history:', dbError.message);
-        // Continue even if history saving fails
       }
 
       let resultMessage = `✅ *Platform Broadcast Completed!*\n\n` +
@@ -610,48 +687,28 @@ class PlatformAdminHandler {
     }
   }
 
-  // Advanced analytics
+  // Advanced analytics - optimized
   static async advancedAnalytics(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      // Get analytics data for the last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
       const [
         newUsers,
         newBots,
         activeUsers,
         messagesStats
-      ] = await Promise.all([
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        Bot.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        // FIXED: Use PostgreSQL-compatible date functions
+      ] = await Promise.allSettled([
+        User.count({ where: { created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo } } }),
+        Bot.count({ where: { created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo } } }),
+        User.count({ where: { last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo } } }),
         Feedback.findAll({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          },
+          where: { created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo } },
           attributes: [
             [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
             [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
@@ -660,16 +717,18 @@ class PlatformAdminHandler {
         })
       ]);
 
-      const totalMessages = parseInt(messagesStats[0]?.total || 0);
-      const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
+      const totalMessages = messagesStats.status === 'fulfilled' ? 
+        parseInt(messagesStats.value[0]?.total || 0) : 0;
+      const repliedMessages = messagesStats.status === 'fulfilled' ? 
+        parseInt(messagesStats.value[0]?.replied || 0) : 0;
       const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0;
 
       const analyticsMessage = `📊 *Advanced Analytics* (Last 30 Days)\n\n` +
         `*User Growth:*\n` +
-        `👥 New Users: ${formatNumber(newUsers)}\n` +
-        `👥 Active Users: ${formatNumber(activeUsers)}\n\n` +
+        `👥 New Users: ${formatNumber(newUsers.status === 'fulfilled' ? newUsers.value : 0)}\n` +
+        `👥 Active Users: ${formatNumber(activeUsers.status === 'fulfilled' ? activeUsers.value : 0)}\n\n` +
         `*Bot Activity:*\n` +
-        `🤖 New Bots: ${formatNumber(newBots)}\n\n` +
+        `🤖 New Bots: ${formatNumber(newBots.status === 'fulfilled' ? newBots.value : 0)}\n\n` +
         `*Messaging:*\n` +
         `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
         `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
@@ -688,34 +747,28 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(analyticsMessage, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('Advanced analytics error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading analytics');
-      } else {
-        await ctx.reply('❌ Error loading analytics');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading analytics');
     }
   }
 
-  // User statistics feature
+  // User statistics - optimized
   static async userStatistics(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      // Get detailed user statistics
       const [
         totalUsers,
         bannedUsers,
@@ -724,57 +777,39 @@ class PlatformAdminHandler {
         newToday,
         newWeek,
         usersWithBots
-      ] = await Promise.all([
+      ] = await Promise.allSettled([
         User.count(),
         User.count({ where: { is_banned: true } }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          include: [{
-            model: Bot,
-            as: 'OwnedBots',
-            required: true
-          }]
-        })
+        User.count({ where: { last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
+        User.count({ where: { last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+        User.count({ where: { created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
+        User.count({ where: { created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+        User.count({ include: [{ model: Bot, as: 'OwnedBots', required: true }] })
       ]);
+
+      const total = totalUsers.status === 'fulfilled' ? totalUsers.value : 0;
+      const banned = bannedUsers.status === 'fulfilled' ? bannedUsers.value : 0;
+      const withBots = usersWithBots.status === 'fulfilled' ? usersWithBots.value : 0;
 
       const statsMessage = `📊 *User Statistics*\n\n` +
         `*Overview:*\n` +
-        `👥 Total Users: ${formatNumber(totalUsers)}\n` +
-        `🚫 Banned Users: ${formatNumber(bannedUsers)}\n` +
-        `✅ Active Users: ${formatNumber(totalUsers - bannedUsers)}\n\n` +
+        `👥 Total Users: ${formatNumber(total)}\n` +
+        `🚫 Banned Users: ${formatNumber(banned)}\n` +
+        `✅ Active Users: ${formatNumber(total - banned)}\n\n` +
         
         `*Activity:*\n` +
-        `📈 Active Today: ${formatNumber(activeToday)}\n` +
-        `📈 Active This Week: ${formatNumber(activeWeek)}\n` +
-        `🆕 New Today: ${formatNumber(newToday)}\n` +
-        `🆕 New This Week: ${formatNumber(newWeek)}\n\n` +
+        `📈 Active Today: ${formatNumber(activeToday.status === 'fulfilled' ? activeToday.value : 0)}\n` +
+        `📈 Active This Week: ${formatNumber(activeWeek.status === 'fulfilled' ? activeWeek.value : 0)}\n` +
+        `🆕 New Today: ${formatNumber(newToday.status === 'fulfilled' ? newToday.value : 0)}\n` +
+        `🆕 New This Week: ${formatNumber(newWeek.status === 'fulfilled' ? newWeek.value : 0)}\n\n` +
         
         `*Bot Ownership:*\n` +
-        `🤖 Users with Bots: ${formatNumber(usersWithBots)}\n` +
-        `📊 Bot Ownership Rate: ${((usersWithBots / totalUsers) * 100).toFixed(1)}%\n\n` +
+        `🤖 Users with Bots: ${formatNumber(withBots)}\n` +
+        `📊 Bot Ownership Rate: ${total > 0 ? ((withBots / total) * 100).toFixed(1) : 0}%\n\n` +
         
         `*Platform Health:*\n` +
-        `📱 User Retention: ${((activeWeek / totalUsers) * 100).toFixed(1)}%\n` +
-        `🚀 Growth Rate: ${((newWeek / totalUsers) * 100).toFixed(1)}%`;
+        `📱 User Retention: ${total > 0 ? ((activeWeek.value / total) * 100).toFixed(1) : 0}%\n` +
+        `🚀 Growth Rate: ${total > 0 ? ((newWeek.value / total) * 100).toFixed(1) : 0}%`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
@@ -787,30 +822,25 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(statsMessage, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('User statistics error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading user statistics');
-      } else {
-        await ctx.reply('❌ Error loading user statistics');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading user statistics');
     }
   }
 
-  // Detailed reports feature - FIXED: PostgreSQL compatibility
+  // Detailed reports feature - REQUIRED
   static async detailedReports(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
@@ -820,7 +850,7 @@ class PlatformAdminHandler {
         botGrowth,
         messageStats,
         broadcastStats
-      ] = await Promise.all([
+      ] = await Promise.allSettled([
         // User growth over last 7 days
         User.findAll({
           where: {
@@ -845,7 +875,7 @@ class PlatformAdminHandler {
           group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
           raw: true
         }),
-        // Message statistics - FIXED: Use PostgreSQL-compatible date calculations
+        // Message statistics
         Feedback.findAll({
           attributes: [
             [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
@@ -864,11 +894,16 @@ class PlatformAdminHandler {
         })
       ]);
 
-      const totalMessages = parseInt(messageStats[0]?.total || 0);
-      const repliedMessages = parseInt(messageStats[0]?.replied || 0);
-      const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
-      const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
-      const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
+      const totalMessages = messageStats.status === 'fulfilled' ? 
+        parseInt(messageStats.value[0]?.total || 0) : 0;
+      const repliedMessages = messageStats.status === 'fulfilled' ? 
+        parseInt(messageStats.value[0]?.replied || 0) : 0;
+      const totalBroadcasts = broadcastStats.status === 'fulfilled' ? 
+        parseInt(broadcastStats.value[0]?.total || 0) : 0;
+      const totalRecipients = broadcastStats.status === 'fulfilled' ? 
+        parseInt(broadcastStats.value[0]?.total_recipients || 0) : 0;
+      const avgSuccessRate = broadcastStats.status === 'fulfilled' ? 
+        parseFloat(broadcastStats.value[0]?.avg_success_rate || 0) : 0;
 
       let reportsMessage = `📈 *Detailed Platform Reports*\n\n` +
         `*Message Analytics:*\n` +
@@ -884,22 +919,22 @@ class PlatformAdminHandler {
         `*Growth Trends (Last 7 Days):*\n`;
 
       // Add user growth trends
-      if (userGrowth.length > 0) {
-        reportsMessage += `👥 User Growth: ${userGrowth.length} days with new users\n`;
+      if (userGrowth.status === 'fulfilled' && userGrowth.value.length > 0) {
+        reportsMessage += `👥 User Growth: ${userGrowth.value.length} days with new users\n`;
       } else {
         reportsMessage += `👥 User Growth: No new users in last 7 days\n`;
       }
 
       // Add bot growth trends
-      if (botGrowth.length > 0) {
-        reportsMessage += `🤖 Bot Growth: ${botGrowth.length} days with new bots\n`;
+      if (botGrowth.status === 'fulfilled' && botGrowth.value.length > 0) {
+        reportsMessage += `🤖 Bot Growth: ${botGrowth.value.length} days with new bots\n`;
       } else {
         reportsMessage += `🤖 Bot Growth: No new bots in last 7 days\n`;
       }
 
       reportsMessage += `\n*Platform Insights:*\n` +
-        `📱 Active User Rate: ${((userGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} users/day\n` +
-        `🚀 Bot Creation Rate: ${((botGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} bots/day`;
+        `📱 Active User Rate: ${((userGrowth.value?.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} users/day\n` +
+        `🚀 Bot Creation Rate: ${((botGrowth.value?.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} bots/day`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
@@ -912,34 +947,29 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(reportsMessage, keyboard);
       }
 
+      await this.safeAnswerCbQuery(ctx);
+
     } catch (error) {
       console.error('Detailed reports error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading detailed reports');
-      } else {
-        await ctx.reply('❌ Error loading detailed reports');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error loading detailed reports');
     }
   }
 
-  // Bot toggle feature
+  // Start toggle bot process - REQUIRED
   static async startToggleBot(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      platformAdminSessions.set(ctx.from.id, {
+      this.setSession(ctx.from.id, {
         action: 'toggle_bot',
         step: 'awaiting_bot_id'
       });
@@ -951,45 +981,38 @@ class PlatformAdminHandler {
         `• @botusername\n\n` +
         `*Cancel:* Type /cancel`;
 
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+      ]);
+
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
-          ])
+          ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
-          ])
-        );
+        await ctx.replyWithMarkdown(message, keyboard);
       }
+
+      await this.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start toggle bot error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error starting toggle process');
-      } else {
-        await ctx.reply('❌ Error starting toggle process');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error starting toggle process');
     }
   }
 
-  // Bot deletion feature
+  // Start delete bot process - REQUIRED
   static async startDeleteBot(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
-      platformAdminSessions.set(ctx.from.id, {
+      this.setSession(ctx.from.id, {
         action: 'delete_bot',
         step: 'awaiting_bot_id'
       });
@@ -1002,41 +1025,34 @@ class PlatformAdminHandler {
         `• @botusername\n\n` +
         `*Cancel:* Type /cancel`;
 
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_bots')]
+      ]);
+
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
-          ])
+          ...keyboard
         });
-        await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🚫 Cancel', 'platform_bots')]
-          ])
-        );
+        await ctx.replyWithMarkdown(message, keyboard);
       }
+
+      await this.safeAnswerCbQuery(ctx);
 
     } catch (error) {
       console.error('Start delete bot error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error starting delete process');
-      } else {
-        await ctx.reply('❌ Error starting delete process');
-      }
+      await this.safeAnswerCbQuery(ctx);
+      await ctx.reply('❌ Error starting delete process');
     }
   }
 
-  // User export feature
+  // User export feature - REQUIRED
   static async exportUsers(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
-        }
+        await this.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ Access denied');
         return;
       }
 
@@ -1087,11 +1103,90 @@ class PlatformAdminHandler {
     }
   }
 
-  // Handle platform admin text input
+  // Process user ban action - optimized
+  static async processUserBanAction(ctx, action, input) {
+    try {
+      let targetUserId;
+      let targetUser;
+
+      if (/^\d+$/.test(input)) {
+        targetUserId = parseInt(input);
+        targetUser = await User.findOne({ 
+          where: { telegram_id: targetUserId },
+          attributes: ['telegram_id', 'username', 'is_banned']
+        });
+      } else {
+        const username = input.replace('@', '').trim();
+        targetUser = await User.findOne({ 
+          where: { username: username },
+          attributes: ['telegram_id', 'username', 'is_banned']
+        });
+        if (targetUser) targetUserId = targetUser.telegram_id;
+      }
+
+      if (!targetUser) {
+        await ctx.reply('❌ User not found. Please check the User ID or username.');
+        return;
+      }
+
+      if (action === 'ban_user') {
+        if (targetUser.is_banned) {
+          await ctx.reply('❌ This user is already banned.');
+          return;
+        }
+
+        await User.update({
+          is_banned: true,
+          banned_at: new Date(),
+          ban_reason: 'Banned by platform admin'
+        }, { where: { telegram_id: targetUserId } });
+
+        // Stop user's bots
+        const userBots = await Bot.findAll({ 
+          where: { owner_id: targetUserId },
+          attributes: ['id']
+        });
+        
+        for (const bot of userBots) {
+          try {
+            await MiniBotManager.stopBot(bot.id);
+            await Bot.update({ is_active: false }, { where: { id: bot.id } });
+          } catch (error) {
+            console.error(`Failed to stop bot ${bot.id}:`, error);
+          }
+        }
+
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned and all their bots have been deactivated.`);
+
+      } else if (action === 'unban_user') {
+        if (!targetUser.is_banned) {
+          await ctx.reply('❌ This user is not banned.');
+          return;
+        }
+
+        await User.update({
+          is_banned: false,
+          banned_at: null,
+          ban_reason: null
+        }, { where: { telegram_id: targetUserId } });
+
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned.`);
+      }
+
+      // Clear cache since data changed
+      cache.clear();
+
+    } catch (error) {
+      console.error('Process user ban action error:', error);
+      await ctx.reply('❌ Error processing ban action.');
+    }
+  }
+
+  // Handle platform admin text input - optimized
   static async handlePlatformAdminInput(ctx) {
     try {
       const userId = ctx.from.id;
-      const session = platformAdminSessions.get(userId);
+      const session = this.getSession(userId);
 
       if (!session) return;
 
@@ -1122,90 +1217,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Process user ban/unban action
-  static async processUserBanAction(ctx, action, input) {
-    try {
-      let targetUserId;
-      let targetUser;
-
-      // Parse user input
-      if (/^\d+$/.test(input)) {
-        targetUserId = parseInt(input);
-        targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
-      } else {
-        const username = input.replace('@', '').trim();
-        targetUser = await User.findOne({ where: { username: username } });
-        if (targetUser) {
-          targetUserId = targetUser.telegram_id;
-        }
-      }
-
-      if (!targetUser) {
-        await ctx.reply('❌ User not found. Please check the User ID or username.');
-        return;
-      }
-
-      if (action === 'ban_user') {
-        if (targetUser.is_banned) {
-          await ctx.reply('❌ This user is already banned.');
-          return;
-        }
-
-        await targetUser.update({
-          is_banned: true,
-          banned_at: new Date(),
-          ban_reason: 'Banned by platform admin'
-        });
-
-        // Stop all bots owned by this user
-        const userBots = await Bot.findAll({ where: { owner_id: targetUser.telegram_id } });
-        for (const bot of userBots) {
-          try {
-            await MiniBotManager.stopBot(bot.id);
-            await bot.update({ is_active: false });
-          } catch (error) {
-            console.error(`Failed to stop bot ${bot.id}:`, error);
-          }
-        }
-
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned and all their bots have been deactivated.`);
-
-      } else if (action === 'unban_user') {
-        if (!targetUser.is_banned) {
-          await ctx.reply('❌ This user is not banned.');
-          return;
-        }
-
-        await targetUser.update({
-          is_banned: false,
-          banned_at: null,
-          ban_reason: null
-        });
-
-        // Reactivate user's bots when unbanned
-        const userBots = await Bot.findAll({ where: { owner_id: targetUser.telegram_id } });
-        for (const bot of userBots) {
-          try {
-            await MiniBotManager.initializeBot(bot);
-            await bot.update({ is_active: true });
-          } catch (error) {
-            console.error(`Failed to reactivate bot ${bot.id}:`, error);
-          }
-        }
-
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned and their bots have been reactivated.`);
-      }
-
-      // Return to ban management
-      await this.banManagement(ctx);
-
-    } catch (error) {
-      console.error('Process user ban action error:', error);
-      await ctx.reply('❌ Error processing ban action.');
-    }
-  }
-
-  // Process bot toggle - FIXED: Proper reactivation
+  // Process bot toggle - REQUIRED
   static async processBotToggle(ctx, input) {
     try {
       let targetBot;
@@ -1253,8 +1265,8 @@ class PlatformAdminHandler {
         }
       }
 
-      // Return to bot management
-      await this.botManagement(ctx);
+      // Clear cache
+      cache.clear();
 
     } catch (error) {
       console.error('Process bot toggle error:', error);
@@ -1262,7 +1274,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Process bot deletion - FIXED: Foreign key constraint handling
+  // Process bot deletion - REQUIRED
   static async processBotDeletion(ctx, input) {
     try {
       let targetBot;
@@ -1288,7 +1300,7 @@ class PlatformAdminHandler {
         console.error('Error stopping bot during deletion:', error);
       }
 
-      // FIXED: Delete related records first to avoid foreign key constraints
+      // Delete related records first to avoid foreign key constraints
       console.log(`🗑️ Deleting related records for bot ${targetBot.id}...`);
       
       // Delete admins associated with this bot
@@ -1327,8 +1339,8 @@ class PlatformAdminHandler {
 
       await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted along with all its data.`);
 
-      // Return to bot management
-      await this.botManagement(ctx);
+      // Clear cache
+      cache.clear();
 
     } catch (error) {
       console.error('Process bot deletion error:', error);
@@ -1336,96 +1348,62 @@ class PlatformAdminHandler {
     }
   }
 
-  // Check if user is banned and block access
-  static async checkUserBan(userId) {
-    try {
-      const user = await User.findOne({ where: { telegram_id: userId } });
-      return user ? user.is_banned : false;
-    } catch (error) {
-      console.error('Check user ban error:', error);
+  // Check if user is in platform admin session - REQUIRED BY app.js
+  static isInPlatformAdminSession(userId) {
+    const session = platformAdminSessions.get(userId);
+    if (!session) return false;
+    
+    // Check TTL
+    if (Date.now() - session.timestamp > SESSION_TTL) {
+      platformAdminSessions.delete(userId);
       return false;
     }
-  }
-
-  // Check if user is in platform admin session
-  static isInPlatformAdminSession(userId) {
-    return platformAdminSessions.has(userId);
+    
+    return true;
   }
 }
 
-// Register platform admin callbacks
+// Register platform admin callbacks with error handling
 PlatformAdminHandler.registerCallbacks = (bot) => {
-  // Dashboard and main navigation
-  bot.action('platform_dashboard', async (ctx) => {
-    await PlatformAdminHandler.platformDashboard(ctx);
+  const callbacks = {
+    'platform_dashboard': PlatformAdminHandler.platformDashboard,
+    'platform_dashboard_refresh': PlatformAdminHandler.platformDashboard,
+    'platform_users': (ctx) => PlatformAdminHandler.userManagement(ctx, 1),
+    'platform_bots': (ctx) => PlatformAdminHandler.botManagement(ctx, 1),
+    'platform_broadcast': PlatformAdminHandler.startPlatformBroadcast,
+    'platform_bans': PlatformAdminHandler.banManagement,
+    'platform_analytics': PlatformAdminHandler.advancedAnalytics,
+    'platform_ban_user': PlatformAdminHandler.startBanUser,
+    'platform_unban_user': PlatformAdminHandler.startUnbanUser,
+    'platform_user_stats': PlatformAdminHandler.userStatistics,
+    'platform_detailed_reports': PlatformAdminHandler.detailedReports,
+    'platform_toggle_bot': PlatformAdminHandler.startToggleBot,
+    'platform_delete_bot': PlatformAdminHandler.startDeleteBot,
+    'platform_export_users': PlatformAdminHandler.exportUsers
+  };
+
+  // Register individual callbacks
+  Object.entries(callbacks).forEach(([action, handler]) => {
+    bot.action(action, async (ctx) => {
+      try {
+        await handler(ctx);
+      } catch (error) {
+        console.error(`Error in platform admin callback ${action}:`, error);
+        await PlatformAdminHandler.safeAnswerCbQuery(ctx);
+        await ctx.reply('❌ An error occurred. Please try again.');
+      }
+    });
   });
 
-  bot.action('platform_dashboard_refresh', async (ctx) => {
-    await PlatformAdminHandler.platformDashboard(ctx);
-  });
-
-  bot.action('platform_users', async (ctx) => {
-    await PlatformAdminHandler.userManagement(ctx, 1);
-  });
-
-  bot.action('platform_bots', async (ctx) => {
-    await PlatformAdminHandler.botManagement(ctx, 1);
-  });
-
-  bot.action('platform_broadcast', async (ctx) => {
-    await PlatformAdminHandler.startPlatformBroadcast(ctx);
-  });
-
-  bot.action('platform_bans', async (ctx) => {
-    await PlatformAdminHandler.banManagement(ctx);
-  });
-
-  bot.action('platform_analytics', async (ctx) => {
-    await PlatformAdminHandler.advancedAnalytics(ctx);
-  });
-
-  // User management pagination
+  // Register pagination callbacks
   bot.action(/platform_users:(\d+)/, async (ctx) => {
     const page = parseInt(ctx.match[1]);
     await PlatformAdminHandler.userManagement(ctx, page);
   });
 
-  // Bot management pagination
   bot.action(/platform_bots:(\d+)/, async (ctx) => {
     const page = parseInt(ctx.match[1]);
     await PlatformAdminHandler.botManagement(ctx, page);
-  });
-
-  // Ban management actions
-  bot.action('platform_ban_user', async (ctx) => {
-    await PlatformAdminHandler.startBanUser(ctx);
-  });
-
-  bot.action('platform_unban_user', async (ctx) => {
-    await PlatformAdminHandler.startUnbanUser(ctx);
-  });
-
-  // Analytics and stats - IMPLEMENTED FEATURES
-  bot.action('platform_user_stats', async (ctx) => {
-    await PlatformAdminHandler.userStatistics(ctx);
-  });
-
-  bot.action('platform_detailed_reports', async (ctx) => {
-    await PlatformAdminHandler.detailedReports(ctx);
-  });
-
-  // Bot management actions - IMPLEMENTED FEATURES
-  bot.action('platform_toggle_bot', async (ctx) => {
-    await PlatformAdminHandler.startToggleBot(ctx);
-  });
-
-  bot.action('platform_delete_bot', async (ctx) => {
-    await PlatformAdminHandler.startDeleteBot(ctx);
-  });
-
-  // Export features - IMPLEMENTED FEATURES
-  bot.action('platform_export_users', async (ctx) => {
-    await PlatformAdminHandler.exportUsers(ctx);
   });
 };
 
