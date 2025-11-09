@@ -1,103 +1,10 @@
 ﻿const { Markup } = require('telegraf');
 const User = require('../models/User');
 
-// Store for tracking bot restarts and offline periods
-const botState = {
-  lastRestartTime: new Date(),
-  isProcessingOfflineMessages: false,
-  offlineMessageQueue: new Map() // userId -> array of messages during offline
-};
-
-class MaintenanceHandler {
-  // Called when bot starts up
-  static onBotStart() {
-    botState.lastRestartTime = new Date();
-    console.log('🔄 Bot started - ready to process messages');
-  }
-
-  // Check if message was sent while bot was offline
-  static wasSentDuringOffline(messageDate) {
-    const messageTime = new Date(messageDate * 1000); // Telegram uses seconds
-    return messageTime < botState.lastRestartTime;
-  }
-
-  // Handle message that was sent while bot was offline
-  static async handleOfflineMessage(ctx) {
-    const userId = ctx.from.id;
-    const messageText = ctx.message.text;
-    const messageTime = new Date(ctx.message.date * 1000);
-    
-    console.log(`📨 Processing offline message from user ${userId}: ${messageText}`);
-
-    try {
-      // Notify user we're processing their offline message
-      await ctx.reply(`🔄 *Processing Your Message*\n\n` +
-        `I was temporarily offline when you sent this message.\n` +
-        `Now processing: \`${messageText}\`\n\n` +
-        `Thanks for your patience! ✅`, {
-        parse_mode: 'Markdown'
-      });
-
-      // Process the command/message
-      await this.processDelayedMessage(ctx, messageText);
-      
-    } catch (error) {
-      console.error('Error processing offline message:', error);
-      await ctx.reply('❌ Sorry, I had trouble processing your previous message. Please try again.');
-    }
-  }
-
-  // Process delayed message with appropriate handler
-  static async processDelayedMessage(ctx, originalText) {
-    try {
-      if (originalText.startsWith('/start')) {
-        await startHandler(ctx);
-      } else if (originalText.startsWith('/help')) {
-        await helpHandler(ctx);
-      } else if (originalText.startsWith('/createbot')) {
-        const { createBotHandler } = require('./createBotHandler');
-        await createBotHandler(ctx);
-      } else if (originalText.startsWith('/mybots')) {
-        const { myBotsHandler } = require('./myBotsHandler');
-        await myBotsHandler(ctx);
-      } else if (originalText.startsWith('/privacy')) {
-        // You can call privacy handler directly if available
-        await ctx.reply('🔒 Please use /privacy again to view our Privacy Policy.');
-      } else if (originalText.startsWith('/terms')) {
-        await ctx.reply('📋 Please use /terms again to view our Terms of Service.');
-      } else if (originalText.startsWith('/')) {
-        // Unknown command during offline period
-        await ctx.reply(`❓ Unknown command received while I was offline: ${originalText}\n\nPlease use /help to see available commands.`);
-      } else {
-        // Regular text message during offline period
-        await startHandler(ctx);
-      }
-    } catch (error) {
-      console.error('Error in processDelayedMessage:', error);
-      await startHandler(ctx); // Fallback to start handler
-    }
-  }
-
-  // Get bot status information
-  static getBotStatus() {
-    return {
-      lastRestartTime: botState.lastRestartTime,
-      isProcessingOfflineMessages: botState.isProcessingOfflineMessages,
-      offlineQueueSize: botState.offlineMessageQueue.size
-    };
-  }
-}
-
 const startHandler = async (ctx) => {
   try {
     const user = ctx.from;
     
-    // Check if this message was sent during offline period
-    if (MaintenanceHandler.wasSentDuringOffline(ctx.message.date)) {
-      await MaintenanceHandler.handleOfflineMessage(ctx);
-      return;
-    }
-
     // Save/update user in database
     await User.upsert({
       telegram_id: user.id,
@@ -108,7 +15,7 @@ const startHandler = async (ctx) => {
       last_active: new Date()
     });
 
-    const welcomeMessage = `🤖 *Welcome to MarCreator!*\n\n` +
+    const welcomeMessage = `🤖 *Welcome to MarCreatorBot!*\n\n` +
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
       `✨ *Create & Manage Your Own Bots:*\n` +
       `• 🚀 Create mini-bots without coding\n` +
@@ -137,7 +44,7 @@ const startHandler = async (ctx) => {
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
         Markup.button.callback('📋 Terms', 'terms_of_service')
       ],
-      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')]
+      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')] // NEW BUTTON
     ]);
 
     if (ctx.updateType === 'callback_query') {
@@ -156,7 +63,7 @@ const startHandler = async (ctx) => {
     // Fallback
     try {
       await ctx.reply(
-        `🤖 Welcome to MarCreator!\n\n` +
+        `🤖 Welcome to MarCreatorBot!\n\n` +
         `Create and manage Telegram bots without coding.\n\n` +
         `All management happens in your mini-bots!\n\n` +
         `Legal: /privacy & /terms\n\n` +
@@ -165,7 +72,7 @@ const startHandler = async (ctx) => {
           [Markup.button.callback('🚀 Create Bot', 'create_bot')],
           [Markup.button.callback('📊 My Bots', 'my_bots')],
           [Markup.button.callback('❓ Help', 'help')],
-          [Markup.button.url('📺 Tutorials', 'https://t.me/MarCreator')]
+          [Markup.button.url('📺 Tutorials', 'https://t.me/MarCreator')] // NEW BUTTON
         ])
       );
     } catch (fallbackError) {
@@ -179,12 +86,6 @@ const startHandler = async (ctx) => {
 
 const helpHandler = async (ctx) => {
   try {
-    // Check if this message was sent during offline period
-    if (MaintenanceHandler.wasSentDuringOffline(ctx.message.date)) {
-      await MaintenanceHandler.handleOfflineMessage(ctx);
-      return;
-    }
-
     const helpMessage = `📖 *MarCreatorBot - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
       `1. Create bot via @BotFather\n` +
@@ -214,7 +115,7 @@ const helpHandler = async (ctx) => {
       `*🔒 Legal & Support:*\n` +
       `/privacy - View Privacy Policy\n` +
       `/terms - View Terms of Service\n` +
-      `*Contact @MarCreatorSupportBot for help*`;
+      `Contact @MarCreatorSupportBot for help`;
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
@@ -239,7 +140,7 @@ const helpHandler = async (ctx) => {
   } catch (error) {
     console.error('Help handler error:', error);
     await ctx.reply(
-      `🤖 MarCreator Help\n\n` +
+      `🤖 MarCreatorBot Help\n\n` +
       `Main Commands:\n` +
       `/start - Main menu\n` +
       `/createbot - Create bot\n` +
@@ -258,12 +159,6 @@ const helpHandler = async (ctx) => {
 
 const featuresHandler = async (ctx) => {
   try {
-    // Check if this message was sent during offline period
-    if (MaintenanceHandler.wasSentDuringOffline(ctx.message.date)) {
-      await MaintenanceHandler.handleOfflineMessage(ctx);
-      return;
-    }
-
     const featuresMessage = `⭐ *MarCreatorBot Features*\n\n` +
       `*🤖 Bot Creation & Management:*\n` +
       `• Create mini-bots\n` +
@@ -329,7 +224,7 @@ const featuresHandler = async (ctx) => {
   } catch (error) {
     console.error('Features handler error:', error);
     await ctx.reply(
-      `⭐ MarCreator Features\n\n` +
+      `⭐ MarCreatorBot Features\n\n` +
       `• Create mini-bots\n` +
       `• Real-time messaging\n` +
       `• Broadcast system\n` +
@@ -348,13 +243,7 @@ const featuresHandler = async (ctx) => {
 // Default handler for any unrecognized messages
 const defaultHandler = async (ctx) => {
   try {
-    // Check if this message was sent during offline period
-    if (MaintenanceHandler.wasSentDuringOffline(ctx.message.date)) {
-      await MaintenanceHandler.handleOfflineMessage(ctx);
-      return;
-    }
-
-    const message = `🤖 *MarCreator*\n\n` +
+    const message = `🤖 *MarCreatorBot*\n\n` +
       `I see you sent a message. Here's how I can help you:\n\n` +
       `*Quick Actions:*\n` +
       `• Create and manage Telegram bots\n` +
@@ -389,6 +278,5 @@ module.exports = {
   startHandler, 
   helpHandler, 
   featuresHandler,
-  defaultHandler,
-  MaintenanceHandler 
+  defaultHandler 
 };

@@ -17,7 +17,7 @@ const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
-const { startHandler, helpHandler, featuresHandler, MaintenanceHandler } = require('./handlers/startHandler');
+const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
@@ -37,10 +37,6 @@ class MetaBotCreator {
         agent: null
       }
     });
-    
-    // Initialize offline message handling
-    MaintenanceHandler.onBotStart();
-    
     this.setupHandlers();
   }
   
@@ -279,7 +275,7 @@ class MetaBotCreator {
   
   privacyHandler = async (ctx) => {
     try {
-      const privacyMessage = `🔒 *Privacy Policy - MarCreator*\n\n` +
+      const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*What We Collect:*\n` +
         `• Your Telegram user ID and basic profile info\n` +
@@ -328,12 +324,12 @@ class MetaBotCreator {
 
   termsHandler = async (ctx) => {
     try {
-      const termsMessage = `📋 *Terms of Service - MarCreator*\n\n` +
+      const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*Acceptance of Terms:*\n` +
-        `By using MarCreator, you agree to these Terms of Service.\n\n` +
+        `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
         `*Service Description:*\n` +
-        `MarCreator allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
+        `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
         `*User Responsibilities:*\n` +
         `• You must own or have permission to use bot tokens\n` +
         `• You are responsible for your mini-bots' actions\n` +
@@ -388,7 +384,7 @@ class MetaBotCreator {
       await ctx.reply(
         `📋 Terms of Service\n\n` +
         `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupport'} for questions.`,
+        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorBotSupport'} for questions.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -472,14 +468,13 @@ class MetaBotCreator {
       }
     });
     
-    // Configure bot to process offline messages
+    // Start main bot
     this.bot.launch({
-      dropPendingUpdates: false, // ← CRITICAL: Set to FALSE to receive offline messages
+      dropPendingUpdates: true,
       allowedUpdates: ['message', 'callback_query']
     })
       .then(() => {
         console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-        console.log('📨 Offline message processing: ENABLED');
         console.log('========================================');
         console.log('📱 Main Bot: Manages bot creation');
         console.log('🤖 Mini-bots: Handle user messages');

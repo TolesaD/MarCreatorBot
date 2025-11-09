@@ -1,7 +1,7 @@
 // test-quick.js - QUICK LOCAL TEST
 require('dotenv').config();
 
-console.log('⚡ QUICK TEST - MarCreator');
+console.log('⚡ QUICK TEST - MarCreatorBot');
 console.log('=============================\n');
 
 // Basic environment check
