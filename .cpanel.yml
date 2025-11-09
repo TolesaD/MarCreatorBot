@@ -4,4 +4,8 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/maroseff/public_html/marcreator/
     - /bin/cp -R * $DEPLOYPATH
-    - echo "✅ Files deployed - Node.js App handles npm install"
+    - /bin/cp -R .env $DEPLOYPATH || true
+    - /bin/cp -R .cpanel.yml $DEPLOYPATH || true
+    - cd $DEPLOYPATH
+    - /opt/alt/alt-nodejs14/root/usr/bin/npm install --production
+    - echo "🚀 MarCreatorBot deployed successfully to Yegara"
