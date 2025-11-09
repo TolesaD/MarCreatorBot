@@ -1,5 +1,5 @@
 {
-  "name": "metabot-creator",
+  "name": "marcreator",
   "version": "1.0.0",
   "description": "A Telegram bot that allows users to create and manage their own mini-bots",
   "main": "src/app.js",
