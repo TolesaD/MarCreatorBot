@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - FIXED VERSION WITH MEDIA FORWARDING
+// src/services/MiniBotManager.js - FIXED VERSION WITH PROPER SYNTAX
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -27,7 +27,7 @@ class MiniBotManager {
     } catch (error) {
       console.error('Error setting up message deletion:', error);
     }
-  }
+  };
   
   async initializeAllBots() {
     if (this.initializationPromise) {
@@ -70,7 +70,7 @@ class MiniBotManager {
           // FIXED: Only check for banned users, don't skip initialization for non-platform-creator bots
           const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
           if (owner && owner.is_banned) {
-            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned');
+            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
             // Deactivate the bot if owner is banned
             await botRecord.update({ is_active: false });
             failedCount++;
@@ -380,7 +380,7 @@ class MiniBotManager {
     });
     
     console.log('✅ Bot handlers setup complete with image/video support');
-  }
+  };
 
   // NEW: Handle image messages (both direct and forwarded)
   handleImageMessage = async (ctx) => {
@@ -400,7 +400,7 @@ class MiniBotManager {
       console.error('Image message handler error:', error);
       await ctx.reply('❌ An error occurred while processing your image. Please try again.');
     }
-  }
+  };
 
   // NEW: Handle video messages (both direct and forwarded)
   handleVideoMessage = async (ctx) => {
@@ -420,7 +420,7 @@ class MiniBotManager {
       console.error('Video message handler error:', error);
       await ctx.reply('❌ An error occurred while processing your video. Please try again.');
     }
-  }
+  };
 
   // NEW: Handle document messages (for files that might be images/videos)
   handleDocumentMessage = async (ctx) => {
@@ -440,7 +440,7 @@ class MiniBotManager {
       console.error('Document message handler error:', error);
       await ctx.reply('❌ An error occurred while processing your file. Please try again.');
     }
-  }
+  };
 
   // NEW: Handle media group messages (albums with multiple images/videos)
   handleMediaGroupMessage = async (ctx) => {
@@ -460,7 +460,7 @@ class MiniBotManager {
       console.error('Media group handler error:', error);
       await ctx.reply('❌ An error occurred while processing your media. Please try again.');
     }
-  }
+  };
 
   // NEW: Process user image message
   handleUserImageMessage = async (ctx, metaBotInfo, user) => {
@@ -501,7 +501,7 @@ class MiniBotManager {
       console.error('User image message handler error:', error);
       await ctx.reply('❌ Sorry, there was an error sending your image. Please try again.');
     }
-  }
+  };
 
   // NEW: Process user video message
   handleUserVideoMessage = async (ctx, metaBotInfo, user) => {
@@ -541,7 +541,7 @@ class MiniBotManager {
       console.error('User video message handler error:', error);
       await ctx.reply('❌ Sorry, there was an error sending your video. Please try again.');
     }
-  }
+  };
 
   // NEW: Process user document message
   handleUserDocumentMessage = async (ctx, metaBotInfo, user) => {
@@ -581,7 +581,7 @@ class MiniBotManager {
       console.error('User document message handler error:', error);
       await ctx.reply('❌ Sorry, there was an error sending your file. Please try again.');
     }
-  }
+  };
 
   // NEW: Process user media group message (albums)
   handleUserMediaGroupMessage = async (ctx, metaBotInfo, user) => {
@@ -636,7 +636,7 @@ class MiniBotManager {
       console.error('User media group handler error:', error);
       await ctx.reply('❌ Sorry, there was an error sending your media. Please try again.');
     }
-  }
+  };
 
   getBotInstanceByDbId = (dbId) => {
     const botData = this.activeBots.get(parseInt(dbId));
@@ -646,7 +646,7 @@ class MiniBotManager {
       return null;
     }
     return botData.instance;
-  }
+  };
 
   debugActiveBots = () => {
     console.log('\n🐛 DEBUG: Active Bots Status');
@@ -661,7 +661,7 @@ class MiniBotManager {
         console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
       }
     }
-  }
+  };
 
   async forceReinitializeAllBots() {
     console.log('🔄 FORCE: Reinitializing all mini-bots...');
@@ -747,7 +747,7 @@ class MiniBotManager {
       console.error('Start handler error:', error);
       await ctx.reply('Welcome! Send me a message, image, or video.');
     }
-  }
+  };
   
   showAdminDashboard = async (ctx, metaBotInfo) => {
     try {
@@ -782,7 +782,7 @@ class MiniBotManager {
       console.error('Admin dashboard error:', error);
       await ctx.reply('❌ Error loading dashboard.');
     }
-  }
+  };
   
   showUserWelcome = async (ctx, metaBotInfo) => {
     try {
@@ -796,7 +796,7 @@ class MiniBotManager {
       console.error('User welcome error:', error);
       await ctx.reply(`Welcome to ${metaBotInfo.botName}!`);
     }
-  }
+  };
   
   handleDashboard = async (ctx) => {
     try {
@@ -812,7 +812,7 @@ class MiniBotManager {
       console.error('Dashboard error:', error);
       await ctx.reply('❌ Error loading dashboard.');
     }
-  }
+  };
   
   handleMessagesCommand = async (ctx) => {
     try {
@@ -829,7 +829,7 @@ class MiniBotManager {
       console.error('Messages command error:', error);
       await ctx.reply('❌ Error loading messages.');
     }
-  }
+  };
   
   handleBroadcastCommand = async (ctx) => {
     try {
@@ -846,7 +846,7 @@ class MiniBotManager {
       console.error('Broadcast command error:', error);
       await ctx.reply('❌ Error starting broadcast.');
     }
-  }
+  };
   
   handleStatsCommand = async (ctx) => {
     try {
@@ -856,7 +856,7 @@ class MiniBotManager {
       console.error('Stats command error:', error);
       await ctx.reply('❌ Error loading statistics.');
     }
-  }
+  };
   
   handleAdminsCommand = async (ctx) => {
     try {
@@ -873,7 +873,7 @@ class MiniBotManager {
       console.error('Admins command error:', error);
       await ctx.reply('❌ Error loading admins.');
     }
-  }
+  };
   
   handleHelp = async (ctx) => {
     try {
@@ -916,7 +916,7 @@ class MiniBotManager {
       console.error('Help command error:', error);
       await ctx.reply('Use /start to begin.');
     }
-  }
+  };
   
   handleTextMessage = async (ctx) => {
     try {
@@ -972,7 +972,7 @@ class MiniBotManager {
       console.error('Text message handler error:', error);
       await ctx.reply('❌ An error occurred. Please try again.');
     }
-  }
+  };
   
   handleUserMessage = async (ctx, metaBotInfo, user, message) => {
     try {
@@ -1005,7 +1005,7 @@ class MiniBotManager {
       console.error('User message handler error:', error);
       await ctx.reply('❌ Sorry, there was an error sending your message. Please try again.');
     }
-  }
+  };
   
   handleMiniAction = async (ctx) => {
     try {
@@ -1053,7 +1053,7 @@ class MiniBotManager {
       console.error('Mini action error:', error);
       await ctx.reply('❌ Error processing action');
     }
-  }
+  };
   
   handleReplyAction = async (ctx) => {
     try {
@@ -1074,7 +1074,7 @@ class MiniBotManager {
       console.error('Reply action error:', error);
       await ctx.reply('❌ Error starting reply');
     }
-  }
+  };
   
   handleAdminAction = async (ctx) => {
     try {
@@ -1097,7 +1097,7 @@ class MiniBotManager {
       console.error('Admin action error:', error);
       await ctx.reply('❌ Error processing admin action');
     }
-  }
+  };
   
   handleRemoveAdminAction = async (ctx) => {
     try {
@@ -1118,7 +1118,7 @@ class MiniBotManager {
       console.error('Remove admin action error:', error);
       await ctx.reply('❌ Error removing admin');
     }
-  }
+  };
   
   showUserMessages = async (ctx, botId) => {
     try {
@@ -1181,7 +1181,7 @@ class MiniBotManager {
       console.error('Show messages error:', error);
       await ctx.reply('❌ Error loading messages.');
     }
-  }
+  };
 
   // NEW: Helper function to get emoji for media type
   getMediaTypeEmoji = (messageType) => {
@@ -1196,7 +1196,7 @@ class MiniBotManager {
       'sticker': '🤡'
     };
     return emojiMap[messageType] || '📄';
-  }
+  };
   
   startReply = async (ctx, feedbackId) => {
     try {
@@ -1230,7 +1230,7 @@ class MiniBotManager {
       console.error('Start reply error:', error);
       await ctx.reply('❌ Error starting reply');
     }
-  }
+  };
   
   sendReply = async (ctx, feedbackId, userId, replyText) => {
     try {
@@ -1276,7 +1276,7 @@ class MiniBotManager {
       console.error('Send reply error:', error);
       await ctx.reply('❌ Error sending reply. User might have blocked the bot.');
     }
-  }
+  };
   
   startBroadcast = async (ctx, botId) => {
     try {
@@ -1304,7 +1304,7 @@ class MiniBotManager {
       console.error('Start broadcast error:', error);
       await ctx.reply('❌ Error starting broadcast.');
     }
-  }
+  };
   
   sendBroadcast = async (ctx, botId, message) => {
     try {
@@ -1386,7 +1386,7 @@ class MiniBotManager {
       console.error('Send broadcast error:', error);
       await ctx.reply('❌ Error sending broadcast: ' + error.message);
     }
-  }
+  };
   
   showStats = async (ctx, botId) => {
     try {
@@ -1421,7 +1421,7 @@ class MiniBotManager {
       console.error('Show stats error:', error);
       await ctx.reply('❌ Error loading statistics.');
     }
-  }
+  };
   
   showAdmins = async (ctx, botId) => {
     try {
@@ -1477,7 +1477,7 @@ class MiniBotManager {
       console.error('Show admins error:', error);
       await ctx.reply('❌ Error loading admins.');
     }
-  }
+  };
   
   removeAdmin = async (ctx, botId, adminId) => {
     try {
@@ -1508,7 +1508,7 @@ class MiniBotManager {
       console.error('Remove admin error:', error);
       await ctx.reply('❌ Error removing admin.');
     }
-  }
+  };
   
   startAddAdmin = async (ctx, botId) => {
     try {
@@ -1528,7 +1528,7 @@ class MiniBotManager {
       console.error('Start add admin error:', error);
       await ctx.reply('❌ Error adding admin');
     }
-  }
+  };
   
   processAddAdmin = async (ctx, botId, input) => {
     try {
@@ -1589,7 +1589,7 @@ class MiniBotManager {
       console.error('Process add admin error:', error);
       await ctx.reply('❌ Error adding admin.');
     }
-  }
+  };
   
   showAbout = async (ctx, metaBotInfo) => {
     try {
@@ -1603,7 +1603,7 @@ class MiniBotManager {
       console.error('About error:', error);
       await ctx.reply(`About ${metaBotInfo.botName}`);
     }
-  }
+  };
   
   // FIXED: Enhanced to handle media forwarding with actual files
   notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
@@ -1795,7 +1795,7 @@ class MiniBotManager {
     } catch (error) {
       console.error('Real-time notification error:', error);
     }
-  }
+  };
   
   getQuickStats = async (botId) => {
     try {
@@ -1813,7 +1813,7 @@ class MiniBotManager {
     } catch (error) {
       return { totalUsers: 0, totalMessages: 0, pendingMessages: 0 };
     }
-  }
+  };
   
   checkAdminAccess = async (botId, userId) => {
     try {
@@ -1828,7 +1828,7 @@ class MiniBotManager {
     } catch (error) {
       return false;
     }
-  }
+  };
   
   checkOwnerAccess = async (botId, userId) => {
     try {
@@ -1837,7 +1837,7 @@ class MiniBotManager {
     } catch (error) {
       return false;
     }
-  }
+  };
   
   stopBot = async (botId) => {
     try {
@@ -1851,7 +1851,7 @@ class MiniBotManager {
     } catch (error) {
       console.error(`Error stopping bot ${botId}:`, error);
     }
-  }
+  };
 
   healthCheck = () => {
     console.log('🏥 Mini-bot Manager Health Check:');
@@ -1868,7 +1868,7 @@ class MiniBotManager {
       status: this.isInitialized ? 'READY' : 'INITIALIZING',
       attempts: this.initializationAttempts
     };
-  }
+  };
 }
 
 module.exports = new MiniBotManager();
