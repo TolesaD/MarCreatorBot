@@ -15,7 +15,7 @@ const startHandler = async (ctx) => {
       last_active: new Date()
     });
 
-    const welcomeMessage = `🤖 *Welcome to MarCreatorBot!*\n\n` +
+    const welcomeMessage = `🤖 *Welcome to MarCreator!*\n\n` +
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
       `✨ *Create & Manage Your Own Bots:*\n` +
       `• 🚀 Create mini-bots without coding\n` +
@@ -63,7 +63,7 @@ const startHandler = async (ctx) => {
     // Fallback
     try {
       await ctx.reply(
-        `🤖 Welcome to MarCreatorBot!\n\n` +
+        `🤖 Welcome to MarCreator!\n\n` +
         `Create and manage Telegram bots without coding.\n\n` +
         `All management happens in your mini-bots!\n\n` +
         `Legal: /privacy & /terms\n\n` +
@@ -140,7 +140,7 @@ const helpHandler = async (ctx) => {
   } catch (error) {
     console.error('Help handler error:', error);
     await ctx.reply(
-      `🤖 MarCreatorBot Help\n\n` +
+      `🤖 MarCreator Help\n\n` +
       `Main Commands:\n` +
       `/start - Main menu\n` +
       `/createbot - Create bot\n` +
@@ -159,7 +159,7 @@ const helpHandler = async (ctx) => {
 
 const featuresHandler = async (ctx) => {
   try {
-    const featuresMessage = `⭐ *MarCreatorBot Features*\n\n` +
+    const featuresMessage = `⭐ *MarCreator Features*\n\n` +
       `*🤖 Bot Creation & Management:*\n` +
       `• Create mini-bots\n` +
       `• No coding knowledge required\n` +
@@ -224,7 +224,7 @@ const featuresHandler = async (ctx) => {
   } catch (error) {
     console.error('Features handler error:', error);
     await ctx.reply(
-      `⭐ MarCreatorBot Features\n\n` +
+      `⭐ MarCreator Features\n\n` +
       `• Create mini-bots\n` +
       `• Real-time messaging\n` +
       `• Broadcast system\n` +

@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - FIXED VERSION
+// src/services/MiniBotManager.js - FIXED VERSION WITH IMAGE/VIDEO SUPPORT
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -354,7 +354,21 @@ class MiniBotManager {
     bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
     bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
     bot.command('help', (ctx) => this.handleHelp(ctx));
+    
+    // TEXT MESSAGES
     bot.on('text', (ctx) => this.handleTextMessage(ctx));
+    
+    // IMAGE MESSAGES - Handle both direct and forwarded images
+    bot.on('photo', (ctx) => this.handleImageMessage(ctx));
+    
+    // VIDEO MESSAGES - Handle both direct and forwarded videos
+    bot.on('video', (ctx) => this.handleVideoMessage(ctx));
+    
+    // DOCUMENT MESSAGES - Handle files that might be images/videos
+    bot.on('document', (ctx) => this.handleDocumentMessage(ctx));
+    
+    // MEDIA GROUP MESSAGES - Handle albums with multiple images/videos
+    bot.on('media_group', (ctx) => this.handleMediaGroupMessage(ctx));
     
     bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
     bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
@@ -365,7 +379,259 @@ class MiniBotManager {
       console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
     });
     
-    console.log('✅ Bot handlers setup complete');
+    console.log('✅ Bot handlers setup complete with image/video support');
+  }
+
+  // NEW: Handle image messages (both direct and forwarded)
+  handleImageMessage = async (ctx) => {
+    try {
+      const user = ctx.from;
+      const { metaBotInfo } = ctx;
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+        return;
+      }
+      
+      await this.handleUserImageMessage(ctx, metaBotInfo, user);
+      
+    } catch (error) {
+      console.error('Image message handler error:', error);
+      await ctx.reply('❌ An error occurred while processing your image. Please try again.');
+    }
+  }
+
+  // NEW: Handle video messages (both direct and forwarded)
+  handleVideoMessage = async (ctx) => {
+    try {
+      const user = ctx.from;
+      const { metaBotInfo } = ctx;
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+        return;
+      }
+      
+      await this.handleUserVideoMessage(ctx, metaBotInfo, user);
+      
+    } catch (error) {
+      console.error('Video message handler error:', error);
+      await ctx.reply('❌ An error occurred while processing your video. Please try again.');
+    }
+  }
+
+  // NEW: Handle document messages (for files that might be images/videos)
+  handleDocumentMessage = async (ctx) => {
+    try {
+      const user = ctx.from;
+      const { metaBotInfo } = ctx;
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+        return;
+      }
+      
+      await this.handleUserDocumentMessage(ctx, metaBotInfo, user);
+      
+    } catch (error) {
+      console.error('Document message handler error:', error);
+      await ctx.reply('❌ An error occurred while processing your file. Please try again.');
+    }
+  }
+
+  // NEW: Handle media group messages (albums with multiple images/videos)
+  handleMediaGroupMessage = async (ctx) => {
+    try {
+      const user = ctx.from;
+      const { metaBotInfo } = ctx;
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+        return;
+      }
+      
+      await this.handleUserMediaGroupMessage(ctx, metaBotInfo, user);
+      
+    } catch (error) {
+      console.error('Media group handler error:', error);
+      await ctx.reply('❌ An error occurred while processing your media. Please try again.');
+    }
+  }
+
+  // NEW: Process user image message
+  handleUserImageMessage = async (ctx, metaBotInfo, user) => {
+    try {
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date()
+      });
+      
+      // Get the largest available photo
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      const caption = ctx.message.caption || '';
+      
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: caption || '[Image]',
+        message_id: ctx.message.message_id,
+        message_type: 'image',
+        media_file_id: photo.file_id,
+        media_caption: caption
+      });
+      
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'image');
+      
+      const successMsg = await ctx.reply('✅ Your image has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`📸 New image from ${user.first_name} to ${metaBotInfo.botName}`);
+      
+    } catch (error) {
+      console.error('User image message handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your image. Please try again.');
+    }
+  }
+
+  // NEW: Process user video message
+  handleUserVideoMessage = async (ctx, metaBotInfo, user) => {
+    try {
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date()
+      });
+      
+      const video = ctx.message.video;
+      const caption = ctx.message.caption || '';
+      
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: caption || '[Video]',
+        message_id: ctx.message.message_id,
+        message_type: 'video',
+        media_file_id: video.file_id,
+        media_caption: caption
+      });
+      
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'video');
+      
+      const successMsg = await ctx.reply('✅ Your video has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`🎥 New video from ${user.first_name} to ${metaBotInfo.botName}`);
+      
+    } catch (error) {
+      console.error('User video message handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your video. Please try again.');
+    }
+  }
+
+  // NEW: Process user document message
+  handleUserDocumentMessage = async (ctx, metaBotInfo, user) => {
+    try {
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date()
+      });
+      
+      const document = ctx.message.document;
+      const caption = ctx.message.caption || '';
+      
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: caption || `[File: ${document.file_name || 'Document'}]`,
+        message_id: ctx.message.message_id,
+        message_type: 'document',
+        media_file_id: document.file_id,
+        media_caption: caption
+      });
+      
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'document');
+      
+      const successMsg = await ctx.reply('✅ Your file has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`📎 New document from ${user.first_name} to ${metaBotInfo.botName}`);
+      
+    } catch (error) {
+      console.error('User document message handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your file. Please try again.');
+    }
+  }
+
+  // NEW: Process user media group message (albums)
+  handleUserMediaGroupMessage = async (ctx, metaBotInfo, user) => {
+    try {
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date()
+      });
+      
+      // For media groups, we'll store the first media and note it's an album
+      const mediaGroup = ctx.message.media_group_id;
+      const messageType = ctx.message.photo ? 'image' : 
+                         ctx.message.video ? 'video' : 
+                         ctx.message.document ? 'document' : 'media_group';
+      
+      let fileId = '';
+      if (ctx.message.photo) {
+        fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+      } else if (ctx.message.video) {
+        fileId = ctx.message.video.file_id;
+      } else if (ctx.message.document) {
+        fileId = ctx.message.document.file_id;
+      }
+      
+      const caption = ctx.message.caption || '';
+      
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: caption || `[Media Album: ${messageType}]`,
+        message_id: ctx.message.message_id,
+        message_type: 'media_group',
+        media_file_id: fileId,
+        media_caption: caption,
+        media_group_id: mediaGroup
+      });
+      
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'media_group');
+      
+      const successMsg = await ctx.reply('✅ Your media album has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`🖼️ New media album from ${user.first_name} to ${metaBotInfo.botName}`);
+      
+    } catch (error) {
+      console.error('User media group handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your media. Please try again.');
+    }
   }
 
   getBotInstanceByDbId = (dbId) => {
@@ -475,7 +741,7 @@ class MiniBotManager {
       
     } catch (error) {
       console.error('Start handler error:', error);
-      await ctx.reply('Welcome! Send me a message.');
+      await ctx.reply('Welcome! Send me a message, image, or video.');
     }
   }
   
@@ -518,7 +784,7 @@ class MiniBotManager {
     try {
       const welcomeMessage = `👋 Welcome to *${metaBotInfo.botName}*!\n\n` +
         `We are here to assist you with any questions or concerns you may have.\n\n` +
-        `Simply send us a message, and we'll respond as quickly as possible!\n\n` +
+        `Simply send us a message, image, or video, and we'll respond as quickly as possible!\n\n` +
         `_This Bot is created by @MarCreatorBot_`;
       
       await ctx.replyWithMarkdown(welcomeMessage);
@@ -631,7 +897,7 @@ class MiniBotManager {
         // Regular user help content
         helpMessage = `🤖 *Help & Support*\n\n` +
           `*How to use this bot:*\n` +
-          `• Send any message to contact our team\n` +
+          `• Send any message, image, or video to contact our team\n` +
           `• We'll respond as quickly as possible\n` +
           `• You'll get notifications when we reply\n\n` +
           `*Available Commands:*\n` +
@@ -724,7 +990,7 @@ class MiniBotManager {
         message_type: 'text'
       });
       
-      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user);
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text');
       
       const successMsg = await ctx.reply('✅ Your message has been received.');
       await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
@@ -871,9 +1137,14 @@ class MiniBotManager {
           `@${feedback.user_username}` : 
           `User#${feedback.user_id}`;
         
-        const preview = feedback.message.length > 50 ? 
-          feedback.message.substring(0, 50) + '...' : 
-          feedback.message;
+        let preview = feedback.message;
+        if (feedback.message_type !== 'text') {
+          preview = `[${this.getMediaTypeEmoji(feedback.message_type)} ${feedback.message_type.toUpperCase()}] ${preview}`;
+        }
+        
+        preview = preview.length > 50 ? 
+          preview.substring(0, 50) + '...' : 
+          preview;
         
         message += `*${index + 1}.* ${userInfo} (${feedback.user_first_name})\n` +
           `💬 ${preview}\n` +
@@ -907,6 +1178,21 @@ class MiniBotManager {
       await ctx.reply('❌ Error loading messages.');
     }
   }
+
+  // NEW: Helper function to get emoji for media type
+  getMediaTypeEmoji = (messageType) => {
+    const emojiMap = {
+      'text': '💬',
+      'image': '🖼️',
+      'video': '🎥',
+      'document': '📎',
+      'media_group': '🖼️',
+      'audio': '🎵',
+      'voice': '🎤',
+      'sticker': '🤡'
+    };
+    return emojiMap[messageType] || '📄';
+  }
   
   startReply = async (ctx, feedbackId) => {
     try {
@@ -922,10 +1208,16 @@ class MiniBotManager {
         step: 'awaiting_reply'
       });
       
+      let mediaInfo = '';
+      if (feedback.message_type !== 'text') {
+        mediaInfo = `\n*Media Type:* ${feedback.message_type}\n`;
+      }
+      
       await ctx.reply(
         `💬 *Replying to ${feedback.user_first_name}*\n\n` +
-        `*Their message:* ${feedback.message}\n\n` +
-        `Please type your reply message:\n\n` +
+        `*Their message:* ${feedback.message}\n` +
+        mediaInfo +
+        `\nPlease type your reply message:\n\n` +
         `*Cancel:* Type /cancel`,
         { parse_mode: 'Markdown' }
       );
@@ -1100,11 +1392,24 @@ class MiniBotManager {
         where: { bot_id: botId, is_replied: false } 
       });
       
+      // Get message type breakdown
+      const messageTypes = await Feedback.findAll({
+        where: { bot_id: botId },
+        attributes: ['message_type', [Feedback.sequelize.fn('COUNT', Feedback.sequelize.col('id')), 'count']],
+        group: ['message_type']
+      });
+      
+      let typeBreakdown = '';
+      messageTypes.forEach(type => {
+        typeBreakdown += `• ${this.getMediaTypeEmoji(type.message_type)} ${type.message_type}: ${type.dataValues.count}\n`;
+      });
+      
       const statsMessage = `📊 *Bot Statistics*\n\n` +
         `👥 Total Users: ${userCount}\n` +
         `💬 Total Messages: ${messageCount}\n` +
         `📨 Pending Replies: ${pendingCount}\n` +
-        `🔄 Status: ✅ Active\n\n`;
+        `🔄 Status: ✅ Active\n\n` +
+        `*Message Types:*\n${typeBreakdown}`;
       
       await ctx.replyWithMarkdown(statsMessage);
       
@@ -1296,9 +1601,10 @@ class MiniBotManager {
     }
   }
   
-  notifyAdminsRealTime = async (botId, feedback, user) => {
+  // UPDATED: Enhanced to handle media notifications
+  notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text') => {
     try {
-      console.log(`🔔 Sending real-time notification for bot ID: ${botId}`);
+      console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
       
       const admins = await Admin.findAll({
         where: { bot_id: botId },
@@ -1315,10 +1621,20 @@ class MiniBotManager {
         return;
       }
       
-      const notificationMessage = `🔔 *New Message Received*\n\n` +
-        `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n` +
-        `*Message:* ${feedback.message}\n\n` +
-        `*Quick Actions:*`;
+      const mediaEmoji = this.getMediaTypeEmoji(messageType);
+      const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
+      
+      let notificationMessage = `${mediaEmoji} *New ${mediaTypeText} Received*\n\n` +
+        `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
+      
+      if (messageType === 'text') {
+        notificationMessage += `*Message:* ${feedback.message}\n\n`;
+      } else {
+        notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
+          `*Type:* ${messageType}\n\n`;
+      }
+      
+      notificationMessage += `*Quick Actions:*`;
       
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)],

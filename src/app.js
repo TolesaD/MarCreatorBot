@@ -275,10 +275,10 @@ class MetaBotCreator {
   
   privacyHandler = async (ctx) => {
     try {
-      const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
+      const privacyMessage = `🔒 *Privacy Policy - MarCreator*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
-        `*What We Collect:*\n` +
-        `• Your Telegram user ID and basic profile info\n` +
+        `*What MarCreator Collect:*\n` +
+        `• Telegram user ID and basic profile info\n` +
         `• Bot tokens (encrypted with AES-256)\n` +
         `• Message data for bot functionality\n` +
         `• Usage statistics for service improvement\n\n` +
@@ -324,7 +324,7 @@ class MetaBotCreator {
 
   termsHandler = async (ctx) => {
     try {
-      const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
+      const termsMessage = `📋 *Terms of Service - MarCreator*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*Acceptance of Terms:*\n` +
         `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
