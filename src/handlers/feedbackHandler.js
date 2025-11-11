@@ -45,7 +45,6 @@ const feedbackHandler = async (ctx, isCallback = false, botId = null) => {
     const message = `📨 *Message Management*\n\n` +
       `View and reply to user messages directly in your mini-bot.\n\n` +
       `Please go to @${access.bot.bot_username} and use:\n` +
-      `• /messages - View all messages\n` +
       `• /dashboard - Full admin panel\n\n` +
       `*You'll get instant notifications when users message your bot!*`;
     

@@ -86,7 +86,7 @@ const startHandler = async (ctx) => {
 
 const helpHandler = async (ctx) => {
   try {
-    const helpMessage = `📖 *MarCreatorBot - Complete Help Guide*\n\n` +
+    const helpMessage = `📖 *MarCreator - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
       `1. Create bot via @BotFather\n` +
       `2. Use /createbot to add it here\n` +
@@ -106,7 +106,6 @@ const helpHandler = async (ctx) => {
       `• Use /dashboard in mini-bot for full features\n\n` +
       `*📊 Management Features (in mini-bots):*\n` +
       `/dashboard - Full admin panel\n` +
-      `/messages - View all user messages\n` +
       `/broadcast - Send to all users\n` +
       `/stats - View statistics\n` +
       `/admins - Manage team (owners only)\n\n` +

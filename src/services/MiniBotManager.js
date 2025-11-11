@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - FIXED VERSION WITH PROPER SYNTAX
+// src/services/MiniBotManager.js - SIMPLIFIED VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -284,7 +284,6 @@ class MiniBotManager {
       const adminCommands = [
         { command: 'start', description: '🚀 Start the bot' },
         { command: 'dashboard', description: '📊 Admin dashboard' },
-        { command: 'messages', description: '📨 View user messages' },
         { command: 'broadcast', description: '📢 Send broadcast' },
         { command: 'stats', description: '📈 View statistics' },
         { command: 'admins', description: '👥 Manage admins' },
@@ -349,7 +348,7 @@ class MiniBotManager {
     
     bot.start((ctx) => this.handleStart(ctx));
     bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
-    bot.command('messages', (ctx) => this.handleMessagesCommand(ctx));
+    // REMOVED: messages command
     bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
     bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
     bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
@@ -763,7 +762,6 @@ class MiniBotManager {
         `• Or click buttons below`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📨 User Messages', 'mini_messages')],
         [Markup.button.callback('📢 Send Broadcast', 'mini_broadcast')],
         [Markup.button.callback('📊 Statistics', 'mini_stats')],
         [Markup.button.callback('👥 Manage Admins', 'mini_admins')],
@@ -814,22 +812,7 @@ class MiniBotManager {
     }
   };
   
-  handleMessagesCommand = async (ctx) => {
-    try {
-      const { metaBotInfo } = ctx;
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, ctx.from.id);
-      
-      if (!isAdmin) {
-        await ctx.reply('❌ Admin access required.');
-        return;
-      }
-      
-      await this.showUserMessages(ctx, metaBotInfo.mainBotId);
-    } catch (error) {
-      console.error('Messages command error:', error);
-      await ctx.reply('❌ Error loading messages.');
-    }
-  };
+  // REMOVED: handleMessagesCommand function
   
   handleBroadcastCommand = async (ctx) => {
     try {
@@ -887,7 +870,6 @@ class MiniBotManager {
         helpMessage = `🤖 *Admin Help & Support*\n\n` +
           `*Available Commands:*\n` +
           `/dashboard - 📊 Admin dashboard with quick stats\n` +
-          `/messages - 📨 View and reply to user messages\n` +
           `/broadcast - 📢 Send message to all users\n` +
           `/stats - 📈 View bot statistics\n` +
           `/admins - 👥 Manage admin team (owners only)\n` +
@@ -1025,9 +1007,6 @@ class MiniBotManager {
       switch (action) {
         case 'dashboard':
           await this.showAdminDashboard(ctx, metaBotInfo);
-          break;
-        case 'messages':
-          await this.showUserMessages(ctx, metaBotInfo.mainBotId);
           break;
         case 'broadcast':
           await this.startBroadcast(ctx, metaBotInfo.mainBotId);
@@ -1700,13 +1679,12 @@ class MiniBotManager {
             
             // Always send the action buttons after the media
             const keyboard = Markup.inlineKeyboard([
-              [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)],
-              [Markup.button.callback('📨 View All Messages', 'mini_messages')]
+              [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
             ]);
             
             await botInstance.telegram.sendMessage(
               admin.User.telegram_id,
-              `💬 *Quick Reply Actions:*`,
+              `*Quick Actions:*`,
               { ...keyboard, parse_mode: 'Markdown' }
             );
             
@@ -1774,13 +1752,12 @@ class MiniBotManager {
           }
           
           const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)],
-            [Markup.button.callback('📨 View All Messages', 'mini_messages')]
+            [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
           ]);
           
           await botInstance.telegram.sendMessage(
             owner.telegram_id,
-            `💬 *Quick Reply Actions:*`,
+            `*Quick Actions:*`,
             { ...keyboard, parse_mode: 'Markdown' }
           );
           

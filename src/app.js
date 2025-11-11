@@ -251,7 +251,7 @@ class MetaBotCreator {
     
     this.bot.action(/^reply_.+/, async (ctx) => {
       await ctx.answerCbQuery('⚠️ Please reply from your mini-bot');
-      await ctx.reply('💬 Message replying is done in your mini-bots. Visit your bot and use /messages there.');
+      await ctx.reply('💬 Message replying is done in your mini-bots.');
     });
     
     this.bot.action(/^admin_.+/, async (ctx) => {
@@ -282,7 +282,7 @@ class MetaBotCreator {
         `• Bot tokens (encrypted with AES-256)\n` +
         `• Message data for bot functionality\n` +
         `• Usage statistics for service improvement\n\n` +
-        `*How We Use Your Data:*\n` +
+        `*How MarCreator Use Your Data:*\n` +
         `• To operate and maintain your mini-bots\n` +
         `• To forward messages between users and admins\n` +
         `• To provide bot management features\n` +
@@ -327,7 +327,7 @@ class MetaBotCreator {
       const termsMessage = `📋 *Terms of Service - MarCreator*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*Acceptance of Terms:*\n` +
-        `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
+        `By using MarCreator, you agree to these Terms of Service.\n\n` +
         `*Service Description:*\n` +
         `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
         `*User Responsibilities:*\n` +
@@ -341,9 +341,7 @@ class MetaBotCreator {
         `• Violating Telegram's Terms of Service\n` +
         `• Attempting to disrupt the service\n\n` +
         `*Service Limitations:*\n` +
-        `• Maximum ${config.MAX_BOTS_PER_USER || 10} bots per user\n` +
         `• Rate limiting applies to prevent abuse\n` +
-        `• Service availability is not guaranteed\n` +
         `• Features may change without notice\n\n` +
         `*Data and Privacy:*\n` +
         `• We encrypt your bot tokens\n` +
@@ -357,7 +355,6 @@ class MetaBotCreator {
         `*Disclaimer:*\n` +
         `Service provided "as is" without warranties. We're not liable for:\n` +
         `• Bot downtime or service interruptions\n` +
-        `• Data loss or corruption\n` +
         `• Actions of your mini-bots\n` +
         `• Third-party service issues\n\n` +
         `*Changes to Terms:*\n` +

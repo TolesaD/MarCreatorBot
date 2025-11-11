@@ -250,7 +250,6 @@ const handleNameInput = async (ctx) => {
       `✅ Your bot is now active! Users can start chatting with @${session.data.bot_username}\n\n` +
       `*You can now manage your bot directly in your mini-bot using:*\n` +
       `• /dashboard - Admin panel\n` +
-      `• /messages - View user messages\n` +
       `• /broadcast - Send broadcasts\n` +
       `• /stats - View statistics\n` +
       `• /admins - Manage admins (owner only)`;
