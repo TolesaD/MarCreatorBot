@@ -845,130 +845,121 @@ static async userStatistics(ctx) {
   }
 }
 
-  // Detailed reports feature - FIXED: PostgreSQL compatibility
-  static async detailedReports(ctx) {
-    try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
+// Detailed reports feature - FIXED: Database compatibility
+static async detailedReports(ctx) {
+  try {
+    if (!this.isPlatformCreator(ctx.from.id)) {
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Access denied');
+      } else {
+        await ctx.reply('❌ Access denied');
+      }
+      return;
+    }
+
+    // Get comprehensive platform reports - FIXED: Simplified queries
+    const [
+      userGrowth,
+      botGrowth,
+      messageStats,
+      broadcastStats,
+      totalUsers
+    ] = await Promise.all([
+      // Simplified user growth query
+      User.count({
+        where: {
+          created_at: { 
+            [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+          }
         }
-        return;
-      }
+      }),
+      // Simplified bot growth query
+      Bot.count({
+        where: {
+          created_at: { 
+            [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+          }
+        }
+      }),
+      // Message statistics - FIXED: Simplified approach
+      Feedback.findAll({
+        attributes: [
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+          [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
+        ],
+        raw: true
+      }),
+      // Broadcast statistics - FIXED: Simplified approach
+      BroadcastHistory.findAll({
+        attributes: [
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+          [require('sequelize').fn('SUM', require('sequelize').col('total_users')), 'total_recipients'],
+          [require('sequelize').fn('AVG', require('sequelize').col('successful_sends')), 'avg_success_rate']
+        ],
+        raw: true
+      }),
+      // Total users for calculations
+      User.count()
+    ]);
 
-      // Get comprehensive platform reports
-      const [
-        userGrowth,
-        botGrowth,
-        messageStats,
-        broadcastStats
-      ] = await Promise.all([
-        // User growth over last 7 days
-        User.findAll({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          },
-          attributes: [
-            [require('sequelize').fn('DATE', require('sequelize').col('created_at')), 'date'],
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-          ],
-          group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
-          raw: true
-        }),
-        // Bot growth over last 7 days
-        Bot.findAll({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          },
-          attributes: [
-            [require('sequelize').fn('DATE', require('sequelize').col('created_at')), 'date'],
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-          ],
-          group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
-          raw: true
-        }),
-        // Message statistics - FIXED: Use PostgreSQL-compatible date calculations
-        Feedback.findAll({
-          attributes: [
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
-          ],
-          raw: true
-        }),
-        // Broadcast statistics
-        BroadcastHistory.findAll({
-          attributes: [
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-            [require('sequelize').fn('SUM', require('sequelize').col('total_users')), 'total_recipients'],
-            [require('sequelize').fn('AVG', require('sequelize').col('successful_sends')), 'avg_success_rate']
-          ],
-          raw: true
-        })
-      ]);
+    // FIXED: Safe parsing of database results
+    const totalMessages = parseInt(messageStats[0]?.total || 0);
+    const repliedMessages = parseInt(messageStats[0]?.replied || 0);
+    const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
+    const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
+    const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
 
-      const totalMessages = parseInt(messagesStats[0]?.total || 0);
-      const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
-      const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
-      const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
-      const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
+    // Calculate rates safely
+    const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
+    const userGrowthRate = totalUsers > 0 ? ((userGrowth / totalUsers) * 100).toFixed(1) : '0';
 
-      let reportsMessage = `📈 *Detailed Platform Reports*\n\n` +
-        `*Message Analytics:*\n` +
-        `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-        `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
-        `📊 Reply Rate: ${totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0}%\n\n` +
-        
-        `*Broadcast Performance:*\n` +
-        `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n` +
-        `👥 Total Recipients: ${formatNumber(totalRecipients)}\n` +
-        `📈 Avg Success Rate: ${avgSuccessRate.toFixed(1)}%\n\n` +
-        
-        `*Growth Trends (Last 7 Days):*\n`;
+    // FIXED: Proper MarkdownV2 escaping
+    let reportsMessage = 
+      '📈 \\*Detailed Platform Reports\\*\n\n' +
+      '\\*Message Analytics:\\*\n' +
+      `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
+      `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
+      `📊 Reply Rate: ${replyRate.toString().replace('.', '\\.')}%\n\n` +
+      
+      '\\*Broadcast Performance:\\*\n' +
+      `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n` +
+      `👥 Total Recipients: ${formatNumber(totalRecipients)}\n` +
+      `📈 Avg Success Rate: ${avgSuccessRate.toFixed(1).replace('.', '\\.')}%\n\n` +
+      
+      '\\*Growth Trends \\(Last 7 Days\\):\\*\n' +
+      `👥 New Users: ${formatNumber(userGrowth)}\n` +
+      `🤖 New Bots: ${formatNumber(botGrowth)}\n\n` +
+      
+      '\\*Platform Insights:\\*\n' +
+      `📱 Daily User Growth Rate: ${userGrowthRate.replace('.', '\\.')}%\n` +
+      `🚀 Bot Creation Rate: ${((botGrowth / 7) || 0).toFixed(1).replace('.', '\\.')} bots/day\n` +
+      `💬 Message Activity: ${((totalMessages / 30) || 0).toFixed(1).replace('.', '\\.')} msgs/day`;
 
-      // Add user growth trends
-      if (userGrowth.length > 0) {
-        reportsMessage += `👥 User Growth: ${userGrowth.length} days with new users\n`;
-      } else {
-        reportsMessage += `👥 User Growth: No new users in last 7 days\n`;
-      }
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
+      [Markup.button.callback('📋 Export Data', 'platform_export_users')],
+      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+    ]);
 
-      // Add bot growth trends
-      if (botGrowth.length > 0) {
-        reportsMessage += `🤖 Bot Growth: ${botGrowth.length} days with new bots\n`;
-      } else {
-        reportsMessage += `🤖 Bot Growth: No new bots in last 7 days\n`;
-      }
+    if (ctx.updateType === 'callback_query') {
+      await ctx.editMessageText(reportsMessage, {
+        parse_mode: 'MarkdownV2',
+        ...keyboard
+      });
+      await ctx.answerCbQuery();
+    } else {
+      await ctx.replyWithMarkdownV2(reportsMessage, keyboard);
+    }
 
-      reportsMessage += `\n*Platform Insights:*\n` +
-        `📱 Active User Rate: ${((userGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} users/day\n` +
-        `🚀 Bot Creation Rate: ${((botGrowth.reduce((sum, day) => sum + parseInt(day.count), 0) / 7) || 0).toFixed(1)} bots/day`;
-
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
-        [Markup.button.callback('📋 Export Data', 'platform_export_users')],
-        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-      ]);
-
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(reportsMessage, {
-          parse_mode: 'MarkdownV2',
-          ...keyboard
-        });
-        await ctx.answerCbQuery();
-      } else {
-        await ctx.replyWithMarkdown(reportsMessage, keyboard);
-      }
-
-    } catch (error) {
-      console.error('Detailed reports error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading detailed reports');
-      } else {
-        await ctx.reply('❌ Error loading detailed reports');
-      }
+  } catch (error) {
+    console.error('Detailed reports error:', error);
+    if (ctx.updateType === 'callback_query') {
+      await ctx.answerCbQuery('❌ Error loading detailed reports');
+    } else {
+      await ctx.reply('❌ Error loading detailed reports');
     }
   }
+}
 
   // Bot toggle feature
   static async startToggleBot(ctx) {
