@@ -1,7 +1,7 @@
 // src/handlers/platformAdminHandler.js - COMPLETE FIXED VERSION
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory, Admin } = require('../models');
-const { formatNumber, escapeMarkdown } = require('../utils/helpers');
+const { formatNumber } = require('../utils/helpers');
 const MiniBotManager = require('../services/MiniBotManager');
 
 // Store admin management sessions
@@ -12,6 +12,14 @@ class PlatformAdminHandler {
   // Check if user is platform creator
   static isPlatformCreator(userId) {
     return userId === 1827785384; // Your user ID
+  }
+
+  // Enhanced Markdown escaping for platform-scale data
+  static escapeMarkdown(text) {
+    if (!text) return '';
+    
+    // Escape all Markdown special characters
+    return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
   }
 
   // Safe answerCbQuery wrapper
@@ -113,7 +121,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // User management with pagination
+  // User management with pagination - FIXED: Markdown escaping
   static async userManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -136,18 +144,22 @@ class PlatformAdminHandler {
 
       const totalPages = Math.ceil(count / limit);
 
-      let message = `👥 *User Management* - Page ${page}/${totalPages}\n\n` +
+      let message = `👥 *User Management* \\- Page ${page}/${totalPages}\n\n` +
         `*Total Users:* ${formatNumber(count)}\n\n` +
         `*Recent Users:*\n`;
 
       users.forEach((user, index) => {
+        // FIXED: Escape all user data for Markdown
+        const escapedUsername = user.username ? this.escapeMarkdown(user.username) : '';
+        const escapedFirstName = this.escapeMarkdown(user.first_name);
+        
         const userInfo = user.username ? 
-          `@${user.username} (${user.first_name})` : 
-          `${user.first_name} (ID: ${user.telegram_id})`;
+          `@${escapedUsername} \\(${escapedFirstName}\\)` : 
+          `${escapedFirstName} \\(ID: ${user.telegram_id}\\)`;
         
         const status = user.is_banned ? '🚫 BANNED' : '✅ Active';
         
-        message += `*${offset + index + 1}.* ${userInfo}\n` +
+        message += `*${offset + index + 1}\\.* ${userInfo}\n` +
           `   Status: ${status}\n` +
           `   Last Active: ${user.last_active.toLocaleDateString()}\n\n`;
       });
@@ -175,7 +187,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2', // Use MarkdownV2 for better escaping
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -193,7 +205,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Bot management with detailed info
+  // Bot management with detailed info - FIXED: Markdown escaping
   static async botManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -221,18 +233,28 @@ class PlatformAdminHandler {
 
       const totalPages = Math.ceil(count / limit);
 
-      let message = `🤖 *Bot Management* - Page ${page}/${totalPages}\n\n` +
+      let message = `🤖 *Bot Management* \\- Page ${page}/${totalPages}\n\n` +
         `*Total Bots:* ${formatNumber(count)}\n\n` +
         `*Recent Bots:*\n`;
 
       bots.forEach((bot, index) => {
-        const ownerInfo = bot.Owner ? 
-          (bot.Owner.is_banned ? `@${bot.Owner.username} 🚫` : `@${bot.Owner.username}`) : 
-          `User#${bot.owner_id}`;
+        // FIXED: Escape all bot and owner data for Markdown
+        const escapedBotName = this.escapeMarkdown(bot.bot_name);
+        const escapedBotUsername = this.escapeMarkdown(bot.bot_username);
+        
+        let ownerInfo;
+        if (bot.Owner) {
+          const escapedOwnerUsername = bot.Owner.username ? this.escapeMarkdown(bot.Owner.username) : '';
+          ownerInfo = bot.Owner.is_banned ? 
+            `@${escapedOwnerUsername} 🚫` : 
+            `@${escapedOwnerUsername}`;
+        } else {
+          ownerInfo = `User#${bot.owner_id}`;
+        }
         
         const status = bot.is_active ? '🟢 Active' : '🔴 Inactive';
         
-        message += `*${offset + index + 1}.* ${bot.bot_name} (@${bot.bot_username})\n` +
+        message += `*${offset + index + 1}\\.* ${escapedBotName} \\(@${escapedBotUsername}\\)\n` +
           `   Owner: ${ownerInfo}\n` +
           `   Status: ${status}\n` +
           `   Created: ${bot.created_at.toLocaleDateString()}\n\n`;
@@ -259,7 +281,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2', // Use MarkdownV2 for better escaping
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -277,7 +299,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Ban management
+  // Ban management - FIXED: Markdown escaping
   static async banManagement(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -299,16 +321,21 @@ class PlatformAdminHandler {
         `*Banned Users:* ${bannedUsers.length}\n\n`;
 
       if (bannedUsers.length === 0) {
-        message += `No users are currently banned.`;
+        message += `No users are currently banned\\.`;
       } else {
         bannedUsers.forEach((user, index) => {
-          const userInfo = user.username ? 
-            `@${user.username} (${user.first_name})` : 
-            `${user.first_name} (ID: ${user.telegram_id})`;
+          // FIXED: Escape user data
+          const escapedUsername = user.username ? this.escapeMarkdown(user.username) : '';
+          const escapedFirstName = this.escapeMarkdown(user.first_name);
+          const escapedBanReason = this.escapeMarkdown(user.ban_reason || 'Not specified');
           
-          message += `*${index + 1}.* ${userInfo}\n` +
+          const userInfo = user.username ? 
+            `@${escapedUsername} \\(${escapedFirstName}\\)` : 
+            `${escapedFirstName} \\(ID: ${user.telegram_id}\\)`;
+          
+          message += `*${index + 1}\\.* ${userInfo}\n` +
             `   Banned: ${user.banned_at ? user.banned_at.toLocaleDateString() : 'Unknown'}\n` +
-            `   Reason: ${user.ban_reason || 'Not specified'}\n\n`;
+            `   Reason: ${escapedBanReason}\n\n`;
         });
       }
 
@@ -320,7 +347,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -358,13 +385,13 @@ class PlatformAdminHandler {
       const message = `🚫 *Ban User*\n\n` +
         `Please provide the user's Telegram ID or username to ban:\n\n` +
         `*Examples:*\n` +
-        `• 123456789 (User ID)\n` +
+        `• 123456789 \\(User ID\\)\n` +
         `• @username\n\n` +
         `*Cancel:* Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
@@ -408,13 +435,13 @@ class PlatformAdminHandler {
       const message = `✅ *Unban User*\n\n` +
         `Please provide the user's Telegram ID or username to unban:\n\n` +
         `*Examples:*\n` +
-        `• 123456789 (User ID)\n` +
+        `• 123456789 \\(User ID\\)\n` +
         `• @username\n\n` +
         `*Cancel:* Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
@@ -438,7 +465,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Platform broadcast
+  // Platform broadcast - FIXED: Use MarkdownV2
   static async startPlatformBroadcast(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -459,13 +486,13 @@ class PlatformAdminHandler {
 
       const message = `📢 *Platform Broadcast*\n\n` +
         `*Recipients:* ${formatNumber(totalUsers)} users\n\n` +
-        `⚠️ *Important:* This will send a message to ALL users of the platform.\n\n` +
+        `⚠️ *Important:* This will send a message to ALL users of the platform\\.\n\n` +
         `Please type your broadcast message:\n\n` +
         `*Cancel:* Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
           ])
@@ -489,7 +516,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Send platform broadcast - FIXED: Handle platform broadcasts without bot_id foreign key constraint
+  // Send platform broadcast - FIXED: Use HTML parsing for better compatibility
   static async sendPlatformBroadcast(ctx, message) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -503,12 +530,12 @@ class PlatformAdminHandler {
       });
 
       const progressMsg = await ctx.reply(
-        `📢 *Platform Broadcast Started*\n\n` +
+        `📢 <b>Platform Broadcast Started</b>\n\n` +
         `🔄 Sending to ${formatNumber(users.length)} users...\n` +
         `✅ Sent: 0\n` +
         `❌ Failed: 0\n` +
         `⏰ Estimated time: ${Math.ceil(users.length / 20)} seconds`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' } // Use HTML for progress messages
       );
 
       let successCount = 0;
@@ -517,11 +544,20 @@ class PlatformAdminHandler {
 
       const startTime = Date.now();
 
+      // FIXED: Escape message for HTML to prevent parsing errors
+      const escapedMessage = message
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
       for (let i = 0; i < users.length; i++) {
         const user = users[i];
         try {
-          await ctx.telegram.sendMessage(user.telegram_id, message, {
-            parse_mode: 'Markdown'
+          // FIXED: Use HTML parse_mode for broadcast messages
+          await ctx.telegram.sendMessage(user.telegram_id, escapedMessage, {
+            parse_mode: 'HTML'
           });
           successCount++;
 
@@ -534,12 +570,12 @@ class PlatformAdminHandler {
               ctx.chat.id,
               progressMsg.message_id,
               null,
-              `📢 *Platform Broadcast Progress*\n\n` +
+              `📢 <b>Platform Broadcast Progress</b>\n\n` +
               `🔄 Sending to ${formatNumber(users.length)} users...\n` +
               `✅ Sent: ${formatNumber(successCount)}\n` +
               `❌ Failed: ${formatNumber(failCount)}\n` +
-              `⏰ Elapsed: ${elapsed}s | Remaining: ~${remaining}s`,
-              { parse_mode: 'Markdown' }
+              `⏰ Elapsed: ${elapsed}s \\| Remaining: ~${remaining}s`,
+              { parse_mode: 'HTML' }
             );
           }
 
@@ -561,12 +597,12 @@ class PlatformAdminHandler {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
       const successRate = ((successCount / users.length) * 100).toFixed(1);
 
-      // Save broadcast history - FIXED: Use NULL for platform broadcasts and handle properly
+      // Save broadcast history
       try {
         await BroadcastHistory.create({
-          bot_id: null, // Use NULL for platform broadcasts
+          bot_id: null,
           sent_by: ctx.from.id,
-          message: message.substring(0, 1000), // Limit message length
+          message: message.substring(0, 1000),
           total_users: users.length,
           successful_sends: successCount,
           failed_sends: failCount,
@@ -574,11 +610,10 @@ class PlatformAdminHandler {
         });
       } catch (dbError) {
         console.error('Failed to save broadcast history:', dbError.message);
-        // Continue even if history saving fails
       }
 
-      let resultMessage = `✅ *Platform Broadcast Completed!*\n\n` +
-        `*Summary:*\n` +
+      let resultMessage = `✅ <b>Platform Broadcast Completed!</b>\n\n` +
+        `<b>Summary:</b>\n` +
         `👥 Total Recipients: ${formatNumber(users.length)}\n` +
         `✅ Successful: ${formatNumber(successCount)}\n` +
         `❌ Failed: ${formatNumber(failCount)}\n` +
@@ -586,7 +621,7 @@ class PlatformAdminHandler {
         `⏰ Total Time: ${totalTime} seconds\n\n`;
 
       if (failCount > 0) {
-        resultMessage += `*Common failure reasons:*\n` +
+        resultMessage += `<b>Common failure reasons:</b>\n` +
           `• User blocked the bot\n` +
           `• User account deleted\n` +
           `• Rate limiting\n\n` +
@@ -598,7 +633,7 @@ class PlatformAdminHandler {
         progressMsg.message_id,
         null,
         resultMessage,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       );
 
       platformAdminSessions.delete(ctx.from.id);
@@ -610,7 +645,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Advanced analytics
+  // Advanced analytics - FIXED: Markdown escaping
   static async advancedAnalytics(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -647,7 +682,6 @@ class PlatformAdminHandler {
             last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
           }
         }),
-        // FIXED: Use PostgreSQL-compatible date functions
         Feedback.findAll({
           where: {
             created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
@@ -664,7 +698,7 @@ class PlatformAdminHandler {
       const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
       const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0;
 
-      const analyticsMessage = `📊 *Advanced Analytics* (Last 30 Days)\n\n` +
+      const analyticsMessage = `📊 *Advanced Analytics* \\(Last 30 Days\\)\n\n` +
         `*User Growth:*\n` +
         `👥 New Users: ${formatNumber(newUsers)}\n` +
         `👥 Active Users: ${formatNumber(activeUsers)}\n\n` +
@@ -685,7 +719,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(analyticsMessage, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -784,7 +818,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(statsMessage, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -864,8 +898,8 @@ class PlatformAdminHandler {
         })
       ]);
 
-      const totalMessages = parseInt(messageStats[0]?.total || 0);
-      const repliedMessages = parseInt(messageStats[0]?.replied || 0);
+      const totalMessages = parseInt(messagesStats[0]?.total || 0);
+      const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
       const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
       const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
       const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
@@ -909,7 +943,7 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(reportsMessage, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...keyboard
         });
         await ctx.answerCbQuery();
@@ -947,13 +981,13 @@ class PlatformAdminHandler {
       const message = `🔄 *Toggle Bot Status*\n\n` +
         `Please provide the bot ID or username to toggle:\n\n` +
         `*Examples:*\n` +
-        `• 123 (Bot ID)\n` +
+        `• 123 \\(Bot ID\\)\n` +
         `• @botusername\n\n` +
         `*Cancel:* Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
@@ -995,16 +1029,16 @@ class PlatformAdminHandler {
       });
 
       const message = `🗑️ *Delete Bot*\n\n` +
-        `⚠️ *Warning:* This will permanently delete the bot and all its data!\n\n` +
+        `⚠️ *Warning:* This will permanently delete the bot and all its data\\!\n\n` +
         `Please provide the bot ID or username to delete:\n\n` +
         `*Examples:*\n` +
-        `• 123 (Bot ID)\n` +
+        `• 123 \\(Bot ID\\)\n` +
         `• @botusername\n\n` +
         `*Cancel:* Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
@@ -1069,8 +1103,8 @@ class PlatformAdminHandler {
         caption: `📋 *User Export Complete*\n\n` +
                 `*Total Users:* ${formatNumber(users.length)}\n` +
                 `*Export Date:* ${new Date().toLocaleDateString()}\n\n` +
-                `The file contains all user data in CSV format.`,
-        parse_mode: 'Markdown'
+                `The file contains all user data in CSV format\\.`,
+        parse_mode: 'MarkdownV2'
       });
 
       if (ctx.updateType === 'callback_query') {
@@ -1097,7 +1131,7 @@ class PlatformAdminHandler {
 
       if (ctx.message.text === '/cancel') {
         platformAdminSessions.delete(userId);
-        await ctx.reply('❌ Platform admin action cancelled.');
+        await ctx.reply('❌ Platform admin action cancelled\\.', { parse_mode: 'MarkdownV2' });
         return;
       }
 
@@ -1117,7 +1151,7 @@ class PlatformAdminHandler {
 
     } catch (error) {
       console.error('Platform admin input error:', error);
-      await ctx.reply('❌ Error processing platform admin action.');
+      await ctx.reply('❌ Error processing platform admin action\\.', { parse_mode: 'MarkdownV2' });
       platformAdminSessions.delete(ctx.from.id);
     }
   }
@@ -1141,13 +1175,13 @@ class PlatformAdminHandler {
       }
 
       if (!targetUser) {
-        await ctx.reply('❌ User not found. Please check the User ID or username.');
+        await ctx.reply('❌ User not found\\. Please check the User ID or username\\.', { parse_mode: 'MarkdownV2' });
         return;
       }
 
       if (action === 'ban_user') {
         if (targetUser.is_banned) {
-          await ctx.reply('❌ This user is already banned.');
+          await ctx.reply('❌ This user is already banned\\.', { parse_mode: 'MarkdownV2' });
           return;
         }
 
@@ -1168,11 +1202,14 @@ class PlatformAdminHandler {
           }
         }
 
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned and all their bots have been deactivated.`);
+        const escapedUsername = targetUser.username ? this.escapeMarkdown(targetUser.username) : targetUser.telegram_id;
+        await ctx.reply(`✅ User @${escapedUsername} has been banned and all their bots have been deactivated\\.`, {
+          parse_mode: 'MarkdownV2'
+        });
 
       } else if (action === 'unban_user') {
         if (!targetUser.is_banned) {
-          await ctx.reply('❌ This user is not banned.');
+          await ctx.reply('❌ This user is not banned\\.', { parse_mode: 'MarkdownV2' });
           return;
         }
 
@@ -1193,7 +1230,10 @@ class PlatformAdminHandler {
           }
         }
 
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned and their bots have been reactivated.`);
+        const escapedUsername = targetUser.username ? this.escapeMarkdown(targetUser.username) : targetUser.telegram_id;
+        await ctx.reply(`✅ User @${escapedUsername} has been unbanned and their bots have been reactivated\\.`, {
+          parse_mode: 'MarkdownV2'
+        });
       }
 
       // Return to ban management
@@ -1201,7 +1241,7 @@ class PlatformAdminHandler {
 
     } catch (error) {
       console.error('Process user ban action error:', error);
-      await ctx.reply('❌ Error processing ban action.');
+      await ctx.reply('❌ Error processing ban action\\.', { parse_mode: 'MarkdownV2' });
     }
   }
 
@@ -1220,7 +1260,7 @@ class PlatformAdminHandler {
       }
 
       if (!targetBot) {
-        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
+        await ctx.reply('❌ Bot not found\\. Please check the Bot ID or username\\.', { parse_mode: 'MarkdownV2' });
         return;
       }
 
@@ -1232,13 +1272,24 @@ class PlatformAdminHandler {
           const success = await MiniBotManager.initializeBot(targetBot);
           if (success) {
             await targetBot.update({ is_active: true });
-            await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
+            
+            // FIXED: Escape bot name for response
+            const escapedBotName = this.escapeMarkdown(targetBot.bot_name);
+            const escapedBotUsername = this.escapeMarkdown(targetBot.bot_username);
+            
+            await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been activated\\.`, {
+              parse_mode: 'MarkdownV2'
+            });
           } else {
-            await ctx.reply(`❌ Failed to activate bot: Initialization failed. Check bot token.`);
+            await ctx.reply(`❌ Failed to activate bot: Initialization failed\\. Check bot token\\.`, {
+              parse_mode: 'MarkdownV2'
+            });
             return;
           }
         } catch (error) {
-          await ctx.reply(`❌ Failed to activate bot: ${error.message}`);
+          await ctx.reply(`❌ Failed to activate bot: ${this.escapeMarkdown(error.message)}`, {
+            parse_mode: 'MarkdownV2'
+          });
           return;
         }
       } else {
@@ -1246,9 +1297,18 @@ class PlatformAdminHandler {
         try {
           await MiniBotManager.stopBot(targetBot.id);
           await targetBot.update({ is_active: false });
-          await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been deactivated.`);
+          
+          // FIXED: Escape bot name for response
+          const escapedBotName = this.escapeMarkdown(targetBot.bot_name);
+          const escapedBotUsername = this.escapeMarkdown(targetBot.bot_username);
+          
+          await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been deactivated\\.`, {
+            parse_mode: 'MarkdownV2'
+          });
         } catch (error) {
-          await ctx.reply(`❌ Failed to deactivate bot: ${error.message}`);
+          await ctx.reply(`❌ Failed to deactivate bot: ${this.escapeMarkdown(error.message)}`, {
+            parse_mode: 'MarkdownV2'
+          });
           return;
         }
       }
@@ -1258,7 +1318,9 @@ class PlatformAdminHandler {
 
     } catch (error) {
       console.error('Process bot toggle error:', error);
-      await ctx.reply('❌ Error toggling bot status.');
+      await ctx.reply('❌ Error toggling bot status\\.', {
+        parse_mode: 'MarkdownV2'
+      });
     }
   }
 
@@ -1277,7 +1339,7 @@ class PlatformAdminHandler {
       }
 
       if (!targetBot) {
-        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
+        await ctx.reply('❌ Bot not found\\. Please check the Bot ID or username\\.', { parse_mode: 'MarkdownV2' });
         return;
       }
 
@@ -1325,14 +1387,21 @@ class PlatformAdminHandler {
       
       await targetBot.destroy();
 
-      await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted along with all its data.`);
+      const escapedBotName = this.escapeMarkdown(botName);
+      const escapedBotUsername = this.escapeMarkdown(botUsername);
+      
+      await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been permanently deleted along with all its data\\.`, {
+        parse_mode: 'MarkdownV2'
+      });
 
       // Return to bot management
       await this.botManagement(ctx);
 
     } catch (error) {
       console.error('Process bot deletion error:', error);
-      await ctx.reply('❌ Error deleting bot: ' + error.message);
+      await ctx.reply(`❌ Error deleting bot: ${this.escapeMarkdown(error.message)}`, {
+        parse_mode: 'MarkdownV2'
+      });
     }
   }
 
