@@ -1611,7 +1611,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
     for (const admin of admins) {
       if (admin.User) {
         try {
-          // FIXED: Combine media and buttons in single message
+          // FIXED: Combine media and buttons in single message without "Quick Actions:" text
           if (messageType === 'image' && originalMessage && originalMessage.photo) {
             // Forward the actual image with buttons
             await botInstance.telegram.sendPhoto(
@@ -1619,8 +1619,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
               originalMessage.photo[originalMessage.photo.length - 1].file_id,
               {
                 caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
                   [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1634,8 +1633,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
               originalMessage.video.file_id,
               {
                 caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
                   [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1649,8 +1647,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
               originalMessage.document.file_id,
               {
                 caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
                   [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1663,8 +1660,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
               admin.User.telegram_id,
               `🔔 *Media Album from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
               `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-              `*This is a media album with multiple files.*\n\n` +
-              `*Quick Actions:*`,
+              `*This is a media album with multiple files.*`,
               { 
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
@@ -1678,13 +1674,11 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
               `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
             
             if (messageType === 'text') {
-              notificationMessage += `*Message:* ${feedback.message}\n\n`;
+              notificationMessage += `*Message:* ${feedback.message}`;
             } else {
               notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-                `*Type:* ${messageType}\n\n`;
+                `*Type:* ${messageType}`;
             }
-            
-            notificationMessage += `*Quick Actions:*`;
             
             await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
               parse_mode: 'Markdown',
@@ -1712,8 +1706,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
             originalMessage.photo[originalMessage.photo.length - 1].file_id,
             {
               caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                       `*Quick Actions:*`,
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
                 [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1726,8 +1719,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
             originalMessage.video.file_id,
             {
               caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                       `*Quick Actions:*`,
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
                 [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1740,8 +1732,7 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
             originalMessage.document.file_id,
             {
               caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                       `*Quick Actions:*`,
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
                 [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
@@ -1753,13 +1744,11 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
             `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
           
           if (messageType === 'text') {
-            notificationMessage += `*Message:* ${feedback.message}\n\n`;
+            notificationMessage += `*Message:* ${feedback.message}`;
           } else {
             notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-              `*Type:* ${messageType}\n\n`;
+              `*Type:* ${messageType}`;
           }
-          
-          notificationMessage += `*Quick Actions:*`;
           
           await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
             parse_mode: 'Markdown',
@@ -1781,7 +1770,6 @@ notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', origi
     console.error('Real-time notification error:', error);
   }
 };
-  
   getQuickStats = async (botId) => {
     try {
       const userCount = await UserLog.count({ where: { bot_id: botId } });
