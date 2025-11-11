@@ -329,7 +329,7 @@ class MetaBotCreator {
         `*Acceptance of Terms:*\n` +
         `By using MarCreator, you agree to these Terms of Service.\n\n` +
         `*Service Description:*\n` +
-        `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
+        `MarCreator allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
         `*User Responsibilities:*\n` +
         `• You must own or have permission to use bot tokens\n` +
         `• You are responsible for your mini-bots' actions\n` +

@@ -1584,195 +1584,184 @@ class MiniBotManager {
     }
   };
   
-  // FIXED: Enhanced to handle media forwarding with actual files
-  notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
-    try {
-      console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
-      
-      const admins = await Admin.findAll({
-        where: { bot_id: botId },
-        include: [{ model: User, as: 'User' }]
-      });
-      
-      const bot = await Bot.findByPk(botId);
-      
-      const botInstance = this.getBotInstanceByDbId(botId);
-      
-      if (!botInstance) {
-        console.error('❌ Bot instance not found for real-time notification');
-        this.debugActiveBots();
-        return;
-      }
-      
-      const mediaEmoji = this.getMediaTypeEmoji(messageType);
-      const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
-      
-      // Send the actual media first, then the notification with buttons
-      for (const admin of admins) {
-        if (admin.User) {
-          try {
-            // FIXED: Forward the actual media file instead of just text notification
-            if (messageType === 'image' && originalMessage && originalMessage.photo) {
-              // Forward the actual image
-              await botInstance.telegram.sendPhoto(
-                admin.User.telegram_id,
-                originalMessage.photo[originalMessage.photo.length - 1].file_id,
-                {
-                  caption: `📸 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                           `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                           `*Quick Actions:*`,
-                  parse_mode: 'Markdown'
-                }
-              );
-            } else if (messageType === 'video' && originalMessage && originalMessage.video) {
-              // Forward the actual video
-              await botInstance.telegram.sendVideo(
-                admin.User.telegram_id,
-                originalMessage.video.file_id,
-                {
-                  caption: `🎥 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                           `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                           `*Quick Actions:*`,
-                  parse_mode: 'Markdown'
-                }
-              );
-            } else if (messageType === 'document' && originalMessage && originalMessage.document) {
-              // Forward the actual document
-              await botInstance.telegram.sendDocument(
-                admin.User.telegram_id,
-                originalMessage.document.file_id,
-                {
-                  caption: `📎 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                           `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                           `*Quick Actions:*`,
-                  parse_mode: 'Markdown'
-                }
-              );
-            } else if (messageType === 'media_group' && originalMessage) {
-              // For media groups, send a notification and handle individually
-              await botInstance.telegram.sendMessage(
-                admin.User.telegram_id,
-                `🖼️ *Media Album from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                `*This is a media album with multiple files.*\n\n` +
-                `*Quick Actions:*`,
-                { parse_mode: 'Markdown' }
-              );
-            } else {
-              // For text messages or fallback
-              let notificationMessage = `${mediaEmoji} *New ${mediaTypeText} Received*\n\n` +
-                `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
-              
-              if (messageType === 'text') {
-                notificationMessage += `*Message:* ${feedback.message}\n\n`;
-              } else {
-                notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-                  `*Type:* ${messageType}\n\n`;
-              }
-              
-              notificationMessage += `*Quick Actions:*`;
-              
-              await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
-                parse_mode: 'Markdown'
-              });
-            }
-            
-            // Always send the action buttons after the media
-            const keyboard = Markup.inlineKeyboard([
-              [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-            ]);
-            
-            await botInstance.telegram.sendMessage(
-              admin.User.telegram_id,
-              `*Quick Actions:*`,
-              { ...keyboard, parse_mode: 'Markdown' }
-            );
-            
-            console.log(`🔔 Media notification sent to admin: ${admin.User.username}`);
-          } catch (error) {
-            console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
-          }
-        }
-      }
-      
-      // Also notify the owner if they're not in the admin list
-      const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
-      if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
+// FIXED: Enhanced to handle media forwarding with actual files
+notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
+  try {
+    console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
+    
+    const admins = await Admin.findAll({
+      where: { bot_id: botId },
+      include: [{ model: User, as: 'User' }]
+    });
+    
+    const bot = await Bot.findByPk(botId);
+    
+    const botInstance = this.getBotInstanceByDbId(botId);
+    
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for real-time notification');
+      this.debugActiveBots();
+      return;
+    }
+    
+    const mediaEmoji = this.getMediaTypeEmoji(messageType);
+    const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
+    
+    // Send the actual media first, then the notification with buttons
+    for (const admin of admins) {
+      if (admin.User) {
         try {
-          // Same forwarding logic for owner
+          // FIXED: Forward the actual media file instead of just text notification
           if (messageType === 'image' && originalMessage && originalMessage.photo) {
+            // Forward the actual image
             await botInstance.telegram.sendPhoto(
-              owner.telegram_id,
+              admin.User.telegram_id,
               originalMessage.photo[originalMessage.photo.length - 1].file_id,
               {
                 caption: `📸 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown'
               }
             );
           } else if (messageType === 'video' && originalMessage && originalMessage.video) {
+            // Forward the actual video
             await botInstance.telegram.sendVideo(
-              owner.telegram_id,
+              admin.User.telegram_id,
               originalMessage.video.file_id,
               {
                 caption: `🎥 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown'
               }
             );
           } else if (messageType === 'document' && originalMessage && originalMessage.document) {
+            // Forward the actual document
             await botInstance.telegram.sendDocument(
-              owner.telegram_id,
+              admin.User.telegram_id,
               originalMessage.document.file_id,
               {
                 caption: `📎 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-                         `*Quick Actions:*`,
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
                 parse_mode: 'Markdown'
               }
             );
+          } else if (messageType === 'media_group' && originalMessage) {
+            // For media groups, send a notification and handle individually
+            await botInstance.telegram.sendMessage(
+              admin.User.telegram_id,
+              `🖼️ *Media Album from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+              `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
+              `*This is a media album with multiple files.*`,
+              { parse_mode: 'Markdown' }
+            );
           } else {
-            let notificationMessage = `${mediaEmoji} *New ${mediaTypeText} Received*\n\n` +
+            // For text messages or fallback
+            let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
               `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
             
             if (messageType === 'text') {
-              notificationMessage += `*Message:* ${feedback.message}\n\n`;
+              notificationMessage += `*Message:* ${feedback.message}`;
             } else {
               notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-                `*Type:* ${messageType}\n\n`;
+                `*Type:* ${messageType}`;
             }
             
-            notificationMessage += `*Quick Actions:*`;
-            
-            await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
+            await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
               parse_mode: 'Markdown'
             });
           }
           
+          // Send the action buttons as a separate message
           const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
           ]);
           
           await botInstance.telegram.sendMessage(
-            owner.telegram_id,
+            admin.User.telegram_id,
             `*Quick Actions:*`,
             { ...keyboard, parse_mode: 'Markdown' }
           );
           
-          console.log(`🔔 Media notification sent to owner: ${owner.username}`);
+          console.log(`🔔 Media notification sent to admin: ${admin.User.username}`);
         } catch (error) {
-          console.error('Failed to notify owner:', error.message);
+          console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
         }
       }
-      
-      console.log(`🔔 Real-time media notification sent for ${bot.bot_name}`);
-      
-    } catch (error) {
-      console.error('Real-time notification error:', error);
     }
-  };
+    
+    // Also notify the owner if they're not in the admin list
+    const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
+    if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
+      try {
+        // Same forwarding logic for owner
+        if (messageType === 'image' && originalMessage && originalMessage.photo) {
+          await botInstance.telegram.sendPhoto(
+            owner.telegram_id,
+            originalMessage.photo[originalMessage.photo.length - 1].file_id,
+            {
+              caption: `📸 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (messageType === 'video' && originalMessage && originalMessage.video) {
+          await botInstance.telegram.sendVideo(
+            owner.telegram_id,
+            originalMessage.video.file_id,
+            {
+              caption: `🎥 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (messageType === 'document' && originalMessage && originalMessage.document) {
+          await botInstance.telegram.sendDocument(
+            owner.telegram_id,
+            originalMessage.document.file_id,
+            {
+              caption: `📎 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                       `💬 ${originalMessage.caption || '[No caption]'}`,
+              parse_mode: 'Markdown'
+            }
+          );
+        } else {
+          let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
+            `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
+          
+          if (messageType === 'text') {
+            notificationMessage += `*Message:* ${feedback.message}`;
+          } else {
+            notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
+              `*Type:* ${messageType}`;
+          }
+          
+          await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
+            parse_mode: 'Markdown'
+          });
+        }
+        
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+        ]);
+        
+        await botInstance.telegram.sendMessage(
+          owner.telegram_id,
+          `*Quick Actions:*`,
+          { ...keyboard, parse_mode: 'Markdown' }
+        );
+        
+        console.log(`🔔 Media notification sent to owner: ${owner.username}`);
+      } catch (error) {
+        console.error('Failed to notify owner:', error.message);
+      }
+    }
+    
+    console.log(`🔔 Real-time media notification sent for ${bot.bot_name}`);
+    
+  } catch (error) {
+    console.error('Real-time notification error:', error);
+  }
+};
   
   getQuickStats = async (botId) => {
     try {
