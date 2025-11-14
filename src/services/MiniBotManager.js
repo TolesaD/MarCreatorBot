@@ -483,6 +483,15 @@ class MiniBotManager {
 // FIXED: Admin media now properly forwards to all users without returning to admin
 handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
   try {
+    // Get the mini-bot instance to send messages through the correct bot
+    const botInstance = this.getBotInstanceByDbId(metaBotInfo.mainBotId);
+    
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for admin media sending');
+      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+      return;
+    }
+
     // Get all users of this bot (excluding the admin who sent the message)
     const users = await UserLog.findAll({ 
       where: { bot_id: metaBotInfo.mainBotId },
@@ -497,12 +506,12 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
     
     console.log(`📤 Admin ${user.first_name} sending ${mediaType} to ${targetUsers.length} users (excluding self)`);
     
-    // Forward the media to all target users (excluding the admin)
+    // Forward the media to all target users (excluding the admin) using the mini-bot instance
     for (const userRecord of targetUsers) {
       try {
         if (mediaType === 'image' && ctx.message.photo) {
           const photo = ctx.message.photo[ctx.message.photo.length - 1];
-          await ctx.telegram.sendPhoto(
+          await botInstance.telegram.sendPhoto(
             userRecord.user_id,
             photo.file_id,
             {
@@ -511,7 +520,7 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
             }
           );
         } else if (mediaType === 'video' && ctx.message.video) {
-          await ctx.telegram.sendVideo(
+          await botInstance.telegram.sendVideo(
             userRecord.user_id,
             ctx.message.video.file_id,
             {
@@ -520,7 +529,7 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
             }
           );
         } else if (mediaType === 'document' && ctx.message.document) {
-          await ctx.telegram.sendDocument(
+          await botInstance.telegram.sendDocument(
             userRecord.user_id,
             ctx.message.document.file_id,
             {
@@ -529,7 +538,7 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
             }
           );
         } else if (mediaType === 'audio' && ctx.message.audio) {
-          await ctx.telegram.sendAudio(
+          await botInstance.telegram.sendAudio(
             userRecord.user_id,
             ctx.message.audio.file_id,
             {
@@ -538,7 +547,7 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
             }
           );
         } else if (mediaType === 'voice' && ctx.message.voice) {
-          await ctx.telegram.sendVoice(
+          await botInstance.telegram.sendVoice(
             userRecord.user_id,
             ctx.message.voice.file_id,
             {
@@ -554,7 +563,7 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
       }
     }
     
-    // Send success message (text only, no file)
+    // Send success message (text only, no file) using the original context
     let successMessage = `✅ Your ${mediaType} has been sent to ${successCount} user${successCount !== 1 ? 's' : ''}.`;
     if (failCount > 0) {
       successMessage += ` ${failCount} failed.`;
