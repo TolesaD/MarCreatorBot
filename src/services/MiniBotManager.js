@@ -480,90 +480,97 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
-  handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
-    try {
-      // Get all users of this bot
-      const users = await UserLog.findAll({ 
-        where: { bot_id: metaBotInfo.mainBotId },
-        attributes: ['user_id']
-      });
-      
-      let successCount = 0;
-      let failCount = 0;
-      
-      // Forward the media to all users
-      for (const userRecord of users) {
-        try {
-          if (mediaType === 'image' && ctx.message.photo) {
-            const photo = ctx.message.photo[ctx.message.photo.length - 1];
-            await ctx.telegram.sendPhoto(
-              userRecord.user_id,
-              photo.file_id,
-              {
-                caption: ctx.message.caption || '',
-                parse_mode: 'Markdown'
-              }
-            );
-          } else if (mediaType === 'video' && ctx.message.video) {
-            await ctx.telegram.sendVideo(
-              userRecord.user_id,
-              ctx.message.video.file_id,
-              {
-                caption: ctx.message.caption || '',
-                parse_mode: 'Markdown'
-              }
-            );
-          } else if (mediaType === 'document' && ctx.message.document) {
-            await ctx.telegram.sendDocument(
-              userRecord.user_id,
-              ctx.message.document.file_id,
-              {
-                caption: ctx.message.caption || '',
-                parse_mode: 'Markdown'
-              }
-            );
-          } else if (mediaType === 'audio' && ctx.message.audio) {
-            await ctx.telegram.sendAudio(
-              userRecord.user_id,
-              ctx.message.audio.file_id,
-              {
-                caption: ctx.message.caption || '',
-                parse_mode: 'Markdown'
-              }
-            );
-          } else if (mediaType === 'voice' && ctx.message.voice) {
-            await ctx.telegram.sendVoice(
-              userRecord.user_id,
-              ctx.message.voice.file_id,
-              {
-                caption: ctx.message.caption || '',
-                parse_mode: 'Markdown'
-              }
-            );
-          }
-          successCount++;
-        } catch (error) {
-          failCount++;
-          console.error(`Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
+// FIXED: Admin media now properly forwards to all users without returning to admin
+handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
+  try {
+    // Get all users of this bot (excluding the admin who sent the message)
+    const users = await UserLog.findAll({ 
+      where: { bot_id: metaBotInfo.mainBotId },
+      attributes: ['user_id']
+    });
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    // Filter out the admin who sent the message to avoid sending back to themselves
+    const targetUsers = users.filter(userRecord => userRecord.user_id !== user.id);
+    
+    console.log(`📤 Admin ${user.first_name} sending ${mediaType} to ${targetUsers.length} users (excluding self)`);
+    
+    // Forward the media to all target users (excluding the admin)
+    for (const userRecord of targetUsers) {
+      try {
+        if (mediaType === 'image' && ctx.message.photo) {
+          const photo = ctx.message.photo[ctx.message.photo.length - 1];
+          await ctx.telegram.sendPhoto(
+            userRecord.user_id,
+            photo.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'video' && ctx.message.video) {
+          await ctx.telegram.sendVideo(
+            userRecord.user_id,
+            ctx.message.video.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'document' && ctx.message.document) {
+          await ctx.telegram.sendDocument(
+            userRecord.user_id,
+            ctx.message.document.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'audio' && ctx.message.audio) {
+          await ctx.telegram.sendAudio(
+            userRecord.user_id,
+            ctx.message.audio.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'voice' && ctx.message.voice) {
+          await ctx.telegram.sendVoice(
+            userRecord.user_id,
+            ctx.message.voice.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
         }
+        successCount++;
+      } catch (error) {
+        failCount++;
+        console.error(`Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
       }
-      
-      const successMsg = await ctx.reply(
-        `✅ Your ${mediaType} has been sent to ${successCount} users.` +
-        (failCount > 0 ? ` ${failCount} failed.` : '')
-      );
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      console.log(`📤 Admin ${user.first_name} sent ${mediaType} to ${successCount} users of ${metaBotInfo.botName}`);
-      
-    } catch (error) {
-      console.error('Admin media message handler error:', error);
-      await ctx.reply('❌ An error occurred while sending your media. Please try again.');
     }
-  };
+    
+    // Send success message (text only, no file)
+    let successMessage = `✅ Your ${mediaType} has been sent to ${successCount} user${successCount !== 1 ? 's' : ''}.`;
+    if (failCount > 0) {
+      successMessage += ` ${failCount} failed.`;
+    }
+    
+    const successMsg = await ctx.reply(successMessage);
+    await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+    
+    console.log(`📤 Admin ${user.first_name} sent ${mediaType} to ${successCount} users of ${metaBotInfo.botName} (${failCount} failed)`);
+    
+  } catch (error) {
+    console.error('Admin media message handler error:', error);
+    await ctx.reply('❌ An error occurred while sending your media. Please try again.');
+  }
+};
 
-  // ... [ALL OTHER USER MEDIA HANDLER FUNCTIONS REMAIN THE SAME]
   handleUserAudioMessage = async (ctx, metaBotInfo, user) => {
     try {
       await UserLog.upsert({
