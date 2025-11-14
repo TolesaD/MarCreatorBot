@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - COMPLETE VERSION
+// src/services/MiniBotManager.js - FIXED VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -356,6 +356,7 @@ class MiniBotManager {
     console.log('✅ Bot handlers setup complete with image/video/audio support');
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleImageMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -363,6 +364,7 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
+        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'image');
         return;
       }
@@ -375,6 +377,7 @@ class MiniBotManager {
     }
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleVideoMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -382,6 +385,7 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
+        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'video');
         return;
       }
@@ -394,6 +398,7 @@ class MiniBotManager {
     }
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleDocumentMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -401,6 +406,7 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
+        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'document');
         return;
       }
@@ -413,6 +419,7 @@ class MiniBotManager {
     }
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleAudioMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -420,6 +427,7 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
+        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'audio');
         return;
       }
@@ -432,6 +440,7 @@ class MiniBotManager {
     }
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleVoiceMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -439,6 +448,7 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
+        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'voice');
         return;
       }
@@ -470,12 +480,82 @@ class MiniBotManager {
     }
   };
 
+  // FIXED: Admin media now properly forwards to all users
   handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
     try {
-      const successMsg = await ctx.reply(`✅ Your ${mediaType} has been sent.`);
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 3000);
+      // Get all users of this bot
+      const users = await UserLog.findAll({ 
+        where: { bot_id: metaBotInfo.mainBotId },
+        attributes: ['user_id']
+      });
       
-      console.log(`📤 Admin ${user.first_name} sent ${mediaType} to ${metaBotInfo.botName}`);
+      let successCount = 0;
+      let failCount = 0;
+      
+      // Forward the media to all users
+      for (const userRecord of users) {
+        try {
+          if (mediaType === 'image' && ctx.message.photo) {
+            const photo = ctx.message.photo[ctx.message.photo.length - 1];
+            await ctx.telegram.sendPhoto(
+              userRecord.user_id,
+              photo.file_id,
+              {
+                caption: ctx.message.caption || '',
+                parse_mode: 'Markdown'
+              }
+            );
+          } else if (mediaType === 'video' && ctx.message.video) {
+            await ctx.telegram.sendVideo(
+              userRecord.user_id,
+              ctx.message.video.file_id,
+              {
+                caption: ctx.message.caption || '',
+                parse_mode: 'Markdown'
+              }
+            );
+          } else if (mediaType === 'document' && ctx.message.document) {
+            await ctx.telegram.sendDocument(
+              userRecord.user_id,
+              ctx.message.document.file_id,
+              {
+                caption: ctx.message.caption || '',
+                parse_mode: 'Markdown'
+              }
+            );
+          } else if (mediaType === 'audio' && ctx.message.audio) {
+            await ctx.telegram.sendAudio(
+              userRecord.user_id,
+              ctx.message.audio.file_id,
+              {
+                caption: ctx.message.caption || '',
+                parse_mode: 'Markdown'
+              }
+            );
+          } else if (mediaType === 'voice' && ctx.message.voice) {
+            await ctx.telegram.sendVoice(
+              userRecord.user_id,
+              ctx.message.voice.file_id,
+              {
+                caption: ctx.message.caption || '',
+                parse_mode: 'Markdown'
+              }
+            );
+          }
+          successCount++;
+        } catch (error) {
+          failCount++;
+          console.error(`Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
+        }
+      }
+      
+      const successMsg = await ctx.reply(
+        `✅ Your ${mediaType} has been sent to ${successCount} users.` +
+        (failCount > 0 ? ` ${failCount} failed.` : '')
+      );
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`📤 Admin ${user.first_name} sent ${mediaType} to ${successCount} users of ${metaBotInfo.botName}`);
       
     } catch (error) {
       console.error('Admin media message handler error:', error);
@@ -483,6 +563,7 @@ class MiniBotManager {
     }
   };
 
+  // ... [ALL OTHER USER MEDIA HANDLER FUNCTIONS REMAIN THE SAME]
   handleUserAudioMessage = async (ctx, metaBotInfo, user) => {
     try {
       await UserLog.upsert({
@@ -869,15 +950,18 @@ class MiniBotManager {
     }
   };
   
-  // UPDATED: Automatically append creator credit to all welcome messages
+  // UPDATED: Use your current default welcome message format
   getWelcomeMessage = async (botId) => {
     try {
       const bot = await Bot.findByPk(botId);
       let welcomeMessage = bot?.welcome_message;
       
-      // If no custom message, use the default from Bot model
+      // If no custom message, use the current default format
       if (!welcomeMessage) {
-        return "👋 Hello! I'm here to help you get in touch with the admin. Just send me a message!";
+        return `👋 Welcome to *{botName}*!\n\n` +
+          `We are here to assist you with any questions or concerns you may have.\n\n` +
+          `Simply send us a message, and we'll respond as quickly as possible!\n\n` +
+          `_This Bot is created by @MarCreatorBot_`;
       }
       
       // For custom messages, append the creator credit if it's not already there
@@ -889,7 +973,10 @@ class MiniBotManager {
       return welcomeMessage;
     } catch (error) {
       console.error('Error getting welcome message:', error);
-      return "👋 Hello! I'm here to help you get in touch with the admin. Just send me a message!";
+      return `👋 Welcome to *{botName}*!\n\n` +
+        `We are here to assist you with any questions or concerns you may have.\n\n` +
+        `Simply send us a message, and we'll respond as quickly as possible!\n\n` +
+        `_This Bot is created by @MarCreatorBot_`;
     }
   };
   
@@ -902,7 +989,7 @@ class MiniBotManager {
       await ctx.replyWithMarkdown(welcomeMessage);
     } catch (error) {
       console.error('User welcome error:', error);
-      await ctx.replyWithMarkdown(`Welcome to ${metaBotInfo.botName}! Send me a message and I'll forward it to the admin.\n\n_This Bot is created by @MarCreatorBot_`);
+      await ctx.replyWithMarkdown(`👋 Welcome to *${metaBotInfo.botName}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`);
     }
   };
   
@@ -942,7 +1029,7 @@ class MiniBotManager {
   showSettings = async (ctx, botId) => {
     try {
       const bot = await Bot.findByPk(botId);
-      const currentWelcomeMessage = bot.welcome_message || "👋 Hello! I'm here to help you get in touch with the admin. Just send me a message!";
+      const currentWelcomeMessage = bot.welcome_message || `👋 Welcome to *${bot.bot_name}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`;
       
       const settingsMessage = `⚙️ *Bot Settings - ${bot.bot_name}*\n\n` +
         `*Current Welcome Message:*\n` +
@@ -999,6 +1086,7 @@ class MiniBotManager {
     }
   };
   
+  // UPDATED: Show the current default format in the change message prompt
   startChangeWelcomeMessage = async (ctx, botId) => {
     try {
       this.welcomeMessageSessions.set(ctx.from.id, {
@@ -1007,13 +1095,12 @@ class MiniBotManager {
       });
       
       const bot = await Bot.findByPk(botId);
-      const currentMessage = bot.welcome_message || "👋 Hello! I'm here to help you get in touch with the admin. Just send me a message!";
+      const currentMessage = bot.welcome_message || `👋 Welcome to *${bot.bot_name}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`;
       
       await ctx.reply(
         `✏️ *Change Welcome Message*\n\n` +
         `*Current Message:*\n${currentMessage}\n\n` +
         `Please send the new welcome message:\n\n` +
-        `*Note:* "This Bot is created by @MarCreatorBot" will be automatically added to the end\n\n` +
         `*Tips:*\n` +
         `• Use {botName} as placeholder for bot name\n` +
         `• Markdown formatting is supported\n` +
