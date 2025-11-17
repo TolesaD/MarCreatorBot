@@ -262,12 +262,22 @@ class MiniBotManager {
     try {
       console.log('🔄 Setting bot commands for menu...');
       
-      const userCommands = [
+      const baseCommands = [
         { command: 'start', description: '🚀 Start the bot' },
         { command: 'help', description: '❓ Get help' }
       ];
       
-      const adminCommands = [
+      const quickBotAdminCommands = [
+        { command: 'start', description: '🚀 Start the bot' },
+        { command: 'dashboard', description: '📊 Admin dashboard' },
+        { command: 'broadcast', description: '📢 Send broadcast' },
+        { command: 'stats', description: '📈 View statistics' },
+        { command: 'admins', description: '👥 Manage admins' },
+        { command: 'settings', description: '⚙️ Bot settings' },
+        { command: 'help', description: '❓ Get help' }
+      ];
+      
+      const customBotAdminCommands = [
         { command: 'start', description: '🚀 Start the bot' },
         { command: 'dashboard', description: '📊 Admin dashboard' },
         { command: 'broadcast', description: '📢 Send broadcast' },
@@ -279,17 +289,19 @@ class MiniBotManager {
       
       if (userId) {
         const isAdmin = await this.checkAdminAccess(bot.context.metaBotInfo.mainBotId, userId);
+        const botType = bot.context.metaBotInfo.botRecord.bot_type;
         
         if (isAdmin) {
-          await bot.telegram.setMyCommands(adminCommands, {
+          const commands = botType === 'custom' ? customBotAdminCommands : quickBotAdminCommands;
+          await bot.telegram.setMyCommands(commands, {
             scope: {
               type: 'chat',
               chat_id: userId
             }
           });
-          console.log(`✅ Admin commands set for user ${userId}`);
+          console.log(`✅ ${botType} admin commands set for user ${userId}`);
         } else {
-          await bot.telegram.setMyCommands(userCommands, {
+          await bot.telegram.setMyCommands(baseCommands, {
             scope: {
               type: 'chat',
               chat_id: userId
@@ -298,14 +310,14 @@ class MiniBotManager {
           console.log(`✅ User commands set for user ${userId}`);
         }
       } else {
-        await bot.telegram.setMyCommands(userCommands);
+        await bot.telegram.setMyCommands(baseCommands);
         console.log('✅ Default user commands set for all users');
       }
     } catch (error) {
       console.error('❌ Failed to set bot commands:', error.message);
     }
   }
-  
+
   setupHandlers = (bot) => {
     console.log('🔄 Setting up handlers for bot...');
     
@@ -328,20 +340,44 @@ class MiniBotManager {
       return next();
     });
     
+    // Common handlers for all bots
     bot.start((ctx) => this.handleStart(ctx));
-    bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
-    bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
-    bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
-    bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
-    bot.command('settings', (ctx) => this.handleSettingsCommand(ctx));
-    bot.command('help', (ctx) => this.handleHelp(ctx));
+    bot.help((ctx) => this.handleHelp(ctx));
     
-    // CRITICAL FIX: Handle custom commands BEFORE regular text messages
-    bot.on('text', (ctx) => this.handleCustomCommands(ctx));
-    bot.on('callback_query', (ctx) => this.handleCustomCommandCallbacks(ctx));
+    // CRITICAL FIX: Different handler order based on bot type
+    const botRecord = bot.context.metaBotInfo?.botRecord;
     
-    // Then handle other message types
-    bot.on('text', (ctx) => this.handleTextMessage(ctx));
+    if (botRecord && botRecord.bot_type === 'custom') {
+      console.log(`🛠️ Setting up CUSTOM bot handlers for: ${botRecord.bot_name}`);
+      
+      // For custom bots: Handle custom commands FIRST
+      bot.on('text', (ctx) => this.handleCustomCommands(ctx));
+      bot.on('callback_query', (ctx) => this.handleCustomCommandCallbacks(ctx));
+      
+      // Then admin commands
+      bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
+      bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
+      bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
+      bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
+      bot.command('settings', (ctx) => this.handleSettingsCommand(ctx));
+      
+      // Then other message types
+      bot.on('text', (ctx) => this.handleTextMessage(ctx));
+      
+    } else {
+      console.log(`🎯 Setting up QUICK bot handlers for: ${botRecord?.bot_name || 'Unknown'}`);
+      
+      // For quick bots: Regular order
+      bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
+      bot.command('broadcast', (ctx) => this.handleBroadcastCommand(ctx));
+      bot.command('stats', (ctx) => this.handleStatsCommand(ctx));
+      bot.command('admins', (ctx) => this.handleAdminsCommand(ctx));
+      bot.command('settings', (ctx) => this.handleSettingsCommand(ctx));
+      
+      bot.on('text', (ctx) => this.handleTextMessage(ctx));
+    }
+    
+    // Common media handlers for both types
     bot.on('photo', (ctx) => this.handleImageMessage(ctx));
     bot.on('video', (ctx) => this.handleVideoMessage(ctx));
     bot.on('document', (ctx) => this.handleDocumentMessage(ctx));
@@ -349,6 +385,7 @@ class MiniBotManager {
     bot.on('voice', (ctx) => this.handleVoiceMessage(ctx));
     bot.on('media_group', (ctx) => this.handleMediaGroupMessage(ctx));
     
+    // Action handlers
     bot.action(/^mini_(.+)/, (ctx) => this.handleMiniAction(ctx));
     bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
     bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
@@ -362,7 +399,7 @@ class MiniBotManager {
     console.log('✅ Bot handlers setup complete with custom command support');
   };
 
-  // NEW: Custom command handler - PROCESS BEFORE REGULAR MESSAGES
+  // ENHANCED: Custom command handler with better bot type detection
   handleCustomCommands = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -373,14 +410,27 @@ class MiniBotManager {
 
       // Only process custom commands for custom bots
       if (metaBotInfo.botRecord.bot_type === 'custom') {
+        console.log(`🛠️ Processing as CUSTOM bot: ${metaBotInfo.botName}`);
+        
         const customCommandResult = await this.processCustomCommandFlow(ctx, metaBotInfo, user, message);
         if (customCommandResult.handled) {
           console.log(`✅ Custom command handled for user ${user.id}`);
           return; // Stop further processing
         }
+        
+        // If no custom command matched, check if it's a regular command
+        if (message.startsWith('/')) {
+          console.log(`📋 Regular command in custom bot: ${message}`);
+          // Let the regular command handlers process it
+          return;
+        }
+        
+        // For non-command messages in custom bots, handle specially
+        await this.handleUserMessageInCustomBot(ctx, metaBotInfo, user, message);
+        return;
       }
 
-      // If not a custom bot or no custom command matched, continue with regular flow
+      // If quick bot, continue with regular admin/user flow
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
         await this.showAdminDashboard(ctx, metaBotInfo);
@@ -393,6 +443,28 @@ class MiniBotManager {
       console.error('Custom command handler error:', error);
       // Fall back to regular message handling
       await this.handleTextMessage(ctx);
+    }
+  };
+
+  // NEW: Special handler for user messages in custom bots
+  handleUserMessageInCustomBot = async (ctx, metaBotInfo, user, message) => {
+    try {
+      // Check if user is in an active custom flow session
+      const sessionKey = `${user.id}_${metaBotInfo.mainBotId}`;
+      const userSession = this.customCommandSessions.get(sessionKey);
+      
+      if (userSession) {
+        // User is in an active flow, continue it
+        await this.continueCustomCommandFlow(ctx, metaBotInfo, user, message, userSession);
+        return;
+      }
+      
+      // If no active session and no custom command matched, treat as regular user message
+      await this.handleUserMessage(ctx, metaBotInfo, user, message);
+      
+    } catch (error) {
+      console.error('Custom bot user message error:', error);
+      await this.handleUserMessage(ctx, metaBotInfo, user, message);
     }
   };
 
@@ -669,7 +741,236 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
+  // ENHANCED: Start handler with proper custom bot welcome
+  handleStart = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} (Type: ${metaBotInfo.botRecord.bot_type}) from ${user.first_name}`);
+      
+      await this.setBotCommands(ctx.telegram, null, user.id);
+      
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date(),
+        first_interaction: new Date(),
+        interaction_count: 1
+      });
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+      } else {
+        // Handle custom bot welcome differently
+        if (metaBotInfo.botRecord.bot_type === 'custom') {
+          await this.showCustomBotWelcome(ctx, metaBotInfo, user);
+        } else {
+          await this.showQuickBotWelcome(ctx, metaBotInfo);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Start handler error:', error);
+      await ctx.reply('Welcome! Send me a message, image, or video.');
+    }
+  };
+
+  // NEW: Custom bot welcome handler
+  showCustomBotWelcome = async (ctx, metaBotInfo, user) => {
+    try {
+      const botRecord = metaBotInfo.botRecord;
+      
+      // Check for custom welcome message or flow
+      if (botRecord.custom_flow_data && botRecord.custom_flow_data.welcome_message) {
+        const welcomeMessage = botRecord.custom_flow_data.welcome_message.replace(/{botName}/g, metaBotInfo.botName);
+        await ctx.replyWithMarkdown(welcomeMessage);
+        
+        // Check if there's an auto-start flow
+        const autoStartStep = botRecord.custom_flow_data.steps.find(step => 
+          step.type === 'trigger' && step.auto_start === true
+        );
+        
+        if (autoStartStep) {
+          await this.startCustomCommandFlow(ctx, metaBotInfo, user, botRecord.custom_flow_data, autoStartStep);
+        }
+      } else {
+        // Default custom bot welcome
+        await ctx.replyWithMarkdown(
+          `🛠️ *Welcome to ${metaBotInfo.botName}!*\n\n` +
+          `This is a custom command bot with interactive features.\n\n` +
+          `*Available Commands:*\n` +
+          `Use the menu (/) button to see available commands\n\n` +
+          `_This bot was created with @MarCreatorBot_`
+        );
+      }
+    } catch (error) {
+      console.error('Custom bot welcome error:', error);
+      await this.showQuickBotWelcome(ctx, metaBotInfo);
+    }
+  };
+
+  // NEW: Quick bot welcome (extracted from existing code)
+  showQuickBotWelcome = async (ctx, metaBotInfo) => {
+    try {
+      let welcomeMessage = await this.getWelcomeMessage(metaBotInfo.mainBotId);
+      welcomeMessage = welcomeMessage.replace(/{botName}/g, metaBotInfo.botName);
+      await ctx.replyWithMarkdown(welcomeMessage);
+    } catch (error) {
+      console.error('Quick bot welcome error:', error);
+      await ctx.replyWithMarkdown(`👋 Welcome to *${metaBotInfo.botName}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`);
+    }
+  };
+
+  // FIXED: Admin media now properly replies to specific users instead of broadcasting
+  handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
+    try {
+      // Check if admin is in a reply session (replying to a specific user)
+      const replySession = this.replySessions.get(user.id);
+      
+      if (replySession && replySession.step === 'awaiting_reply') {
+        // Admin is replying to a specific user with media
+        await this.sendMediaReply(ctx, replySession.userId, replySession.feedbackId, mediaType);
+        this.replySessions.delete(user.id);
+        return;
+      }
+      
+      // If no reply session, show admin dashboard (don't broadcast media)
+      await this.showAdminDashboard(ctx, metaBotInfo);
+      const warningMsg = await ctx.reply('⚠️ Use the "Reply Now" buttons to send media to specific users.');
+      await this.deleteAfterDelay(ctx, warningMsg.message_id, 5000);
+      
+    } catch (error) {
+      console.error('Admin media message handler error:', error);
+      await ctx.reply('❌ An error occurred while processing your media. Please try again.');
+    }
+  };
+
+  // NEW: Send media reply to specific user
+  sendMediaReply = async (ctx, targetUserId, feedbackId, mediaType) => {
+    try {
+      console.log(`💬 Admin sending ${mediaType} reply to user ${targetUserId}`);
+      
+      const feedback = await Feedback.findByPk(feedbackId);
+      if (!feedback) {
+        await ctx.reply('❌ Original message not found.');
+        return;
+      }
+
+      const botInstance = this.getBotInstanceByDbId(feedback.bot_id);
+      if (!botInstance) {
+        console.error('❌ Bot instance not found for media reply');
+        await ctx.reply('❌ Bot not active. Please restart the main bot.');
+        return;
+      }
+
+      // Send the media to the specific user
+      try {
+        if (mediaType === 'image' && ctx.message.photo) {
+          const photo = ctx.message.photo[ctx.message.photo.length - 1];
+          await botInstance.telegram.sendPhoto(
+            targetUserId,
+            photo.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'video' && ctx.message.video) {
+          await botInstance.telegram.sendVideo(
+            targetUserId,
+            ctx.message.video.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'document' && ctx.message.document) {
+          await botInstance.telegram.sendDocument(
+            targetUserId,
+            ctx.message.document.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'audio' && ctx.message.audio) {
+          await botInstance.telegram.sendAudio(
+            targetUserId,
+            ctx.message.audio.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        } else if (mediaType === 'voice' && ctx.message.voice) {
+          await botInstance.telegram.sendVoice(
+            targetUserId,
+            ctx.message.voice.file_id,
+            {
+              caption: ctx.message.caption || '',
+              parse_mode: 'Markdown'
+            }
+          );
+        }
+
+        // Update feedback as replied
+        await feedback.update({
+          is_replied: true,
+          reply_message: `[${mediaType} reply] ${ctx.message.caption || ''}`.trim(),
+          replied_by: ctx.from.id,
+          replied_at: new Date()
+        });
+
+        const successMsg = await ctx.reply(`✅ Your ${mediaType} reply has been sent!`);
+        await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+        
+        console.log(`✅ Admin sent ${mediaType} reply to user ${targetUserId}`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to send ${mediaType} reply to user ${targetUserId}:`, error.message);
+        await ctx.reply('❌ Failed to send reply. User might have blocked the bot.');
+      }
+      
+    } catch (error) {
+      console.error('Send media reply error:', error);
+      await ctx.reply('❌ Error sending media reply.');
+    }
+  };
+
+  // Also need to update the startReply function to handle media replies
+  startReply = async (ctx, feedbackId) => {
+    try {
+      const feedback = await Feedback.findByPk(feedbackId);
+      if (!feedback) {
+        await ctx.reply('❌ Message not found');
+        return;
+      }
+      
+      this.replySessions.set(ctx.from.id, {
+        feedbackId: feedbackId,
+        userId: feedback.user_id,
+        step: 'awaiting_reply'
+      });
+      
+      await ctx.reply(
+        `💬 *Replying to ${feedback.user_first_name}*\n\n` +
+        `Please type your reply message or send an image/video/file:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start reply error:', error);
+      await ctx.reply('❌ Error starting reply');
+    }
+  };
+
+  // FIXED: Admin media handlers
   handleImageMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -690,7 +991,6 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
   handleVideoMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -698,7 +998,6 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
-        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'video');
         return;
       }
@@ -711,7 +1010,6 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
   handleDocumentMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -719,7 +1017,6 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
-        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'document');
         return;
       }
@@ -732,7 +1029,6 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
   handleAudioMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -740,7 +1036,6 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
-        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'audio');
         return;
       }
@@ -753,7 +1048,6 @@ class MiniBotManager {
     }
   };
 
-  // FIXED: Admin media now properly forwards to all users
   handleVoiceMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -761,7 +1055,6 @@ class MiniBotManager {
       
       const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
       if (isAdmin) {
-        // Admin is sending media - forward it to all users
         await this.handleAdminMediaMessage(ctx, metaBotInfo, user, 'voice');
         return;
       }
@@ -793,150 +1086,7 @@ class MiniBotManager {
     }
   };
 
-// FIXED: Admin media now properly replies to specific users instead of broadcasting
-handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
-  try {
-    // Check if admin is in a reply session (replying to a specific user)
-    const replySession = this.replySessions.get(user.id);
-    
-    if (replySession && replySession.step === 'awaiting_reply') {
-      // Admin is replying to a specific user with media
-      await this.sendMediaReply(ctx, replySession.userId, replySession.feedbackId, mediaType);
-      this.replySessions.delete(user.id);
-      return;
-    }
-    
-    // If no reply session, show admin dashboard (don't broadcast media)
-    await this.showAdminDashboard(ctx, metaBotInfo);
-    const warningMsg = await ctx.reply('⚠️ Use the "Reply Now" buttons to send media to specific users.');
-    await this.deleteAfterDelay(ctx, warningMsg.message_id, 5000);
-    
-  } catch (error) {
-    console.error('Admin media message handler error:', error);
-    await ctx.reply('❌ An error occurred while processing your media. Please try again.');
-  }
-};
-
-// NEW: Send media reply to specific user
-sendMediaReply = async (ctx, targetUserId, feedbackId, mediaType) => {
-  try {
-    console.log(`💬 Admin sending ${mediaType} reply to user ${targetUserId}`);
-    
-    const feedback = await Feedback.findByPk(feedbackId);
-    if (!feedback) {
-      await ctx.reply('❌ Original message not found.');
-      return;
-    }
-
-    const botInstance = this.getBotInstanceByDbId(feedback.bot_id);
-    if (!botInstance) {
-      console.error('❌ Bot instance not found for media reply');
-      await ctx.reply('❌ Bot not active. Please restart the main bot.');
-      return;
-    }
-
-    // Send the media to the specific user
-    try {
-      if (mediaType === 'image' && ctx.message.photo) {
-        const photo = ctx.message.photo[ctx.message.photo.length - 1];
-        await botInstance.telegram.sendPhoto(
-          targetUserId,
-          photo.file_id,
-          {
-            caption: ctx.message.caption || '',
-            parse_mode: 'Markdown'
-          }
-        );
-      } else if (mediaType === 'video' && ctx.message.video) {
-        await botInstance.telegram.sendVideo(
-          targetUserId,
-          ctx.message.video.file_id,
-          {
-            caption: ctx.message.caption || '',
-            parse_mode: 'Markdown'
-          }
-        );
-      } else if (mediaType === 'document' && ctx.message.document) {
-        await botInstance.telegram.sendDocument(
-          targetUserId,
-          ctx.message.document.file_id,
-          {
-            caption: ctx.message.caption || '',
-            parse_mode: 'Markdown'
-          }
-        );
-      } else if (mediaType === 'audio' && ctx.message.audio) {
-        await botInstance.telegram.sendAudio(
-          targetUserId,
-          ctx.message.audio.file_id,
-          {
-            caption: ctx.message.caption || '',
-            parse_mode: 'Markdown'
-          }
-        );
-      } else if (mediaType === 'voice' && ctx.message.voice) {
-        await botInstance.telegram.sendVoice(
-          targetUserId,
-          ctx.message.voice.file_id,
-          {
-            caption: ctx.message.caption || '',
-            parse_mode: 'Markdown'
-          }
-        );
-      }
-
-      // Update feedback as replied
-      await feedback.update({
-        is_replied: true,
-        reply_message: `[${mediaType} reply] ${ctx.message.caption || ''}`.trim(),
-        replied_by: ctx.from.id,
-        replied_at: new Date()
-      });
-
-      const successMsg = await ctx.reply(`✅ Your ${mediaType} reply has been sent!`);
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      console.log(`✅ Admin sent ${mediaType} reply to user ${targetUserId}`);
-      
-    } catch (error) {
-      console.error(`❌ Failed to send ${mediaType} reply to user ${targetUserId}:`, error.message);
-      await ctx.reply('❌ Failed to send reply. User might have blocked the bot.');
-    }
-    
-  } catch (error) {
-    console.error('Send media reply error:', error);
-    await ctx.reply('❌ Error sending media reply.');
-  }
-};
-
-// Also need to update the startReply function to handle media replies
-startReply = async (ctx, feedbackId) => {
-  try {
-    const feedback = await Feedback.findByPk(feedbackId);
-    if (!feedback) {
-      await ctx.reply('❌ Message not found');
-      return;
-    }
-    
-    this.replySessions.set(ctx.from.id, {
-      feedbackId: feedbackId,
-      userId: feedback.user_id,
-      step: 'awaiting_reply'
-    });
-    
-    await ctx.reply(
-      `💬 *Replying to ${feedback.user_first_name}*\n\n` +
-      `Please type your reply message or send an image/video/file:\n\n` +
-      `*Cancel:* Type /cancel`,
-      { parse_mode: 'Markdown' }
-    );
-    
-  } catch (error) {
-    console.error('Start reply error:', error);
-    await ctx.reply('❌ Error starting reply');
-  }
-};
-
+  // User message handlers (keep existing implementations)
   handleUserAudioMessage = async (ctx, metaBotInfo, user) => {
     try {
       await UserLog.upsert({
@@ -1178,128 +1328,40 @@ startReply = async (ctx, feedbackId) => {
     }
   };
 
-  getBotInstanceByDbId = (dbId) => {
-    const botData = this.activeBots.get(parseInt(dbId));
-    if (!botData) {
-      console.error(`❌ Bot instance not found for DB ID: ${dbId}`);
-      console.error(`📊 Available bot IDs:`, Array.from(this.activeBots.keys()));
-      return null;
-    }
-    return botData.instance;
-  };
-
-  debugActiveBots = () => {
-    console.log('\n🐛 DEBUG: Active Bots Status');
-    console.log(`📊 Total active bots: ${this.activeBots.size}`);
-    console.log(`🏁 Initialization status: ${this.isInitialized ? 'COMPLETE' : 'PENDING'}`);
-    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
-    
-    if (this.activeBots.size === 0) {
-      console.log('❌ No active bots found in memory!');
-    } else {
-      for (const [dbId, botData] of this.activeBots.entries()) {
-        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Type: ${botData.record.bot_type} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
-      }
-    }
-  };
-
-  async forceReinitializeAllBots() {
-    console.log('🔄 FORCE: Reinitializing all mini-bots...');
-    this.initializationAttempts = 0;
-    this.isInitialized = false;
-    return await this.initializeAllBots();
-  }
-
-  async forceInitializeAllBotsDebug() {
-    console.log('🔄 FORCE DEBUG: Initializing all mini-bots with debug...');
-    
-    const { Bot } = require('../models');
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 DEBUG: Found ${activeBots.length} active bots in database`);
-    
-    for (const botRecord of activeBots) {
-      try {
-        console.log(`🔧 DEBUG: Attempting to initialize ${botRecord.bot_name}...`);
-        console.log(`   - Bot ID: ${botRecord.id}`);
-        console.log(`   - Bot Name: ${botRecord.bot_name}`);
-        console.log(`   - Bot Type: ${botRecord.bot_type}`);
-        console.log(`   - Is Active: ${botRecord.is_active}`);
-        console.log(`   - Owner ID: ${botRecord.owner_id}`);
-        
-        const token = botRecord.getDecryptedToken();
-        console.log(`   - Token available: ${!!token}`);
-        if (token) {
-          console.log(`   - Token preview: ${token.substring(0, 10)}...`);
-        }
-        
-        const success = await this.initializeBot(botRecord);
-        console.log(`   - Initialization result: ${success ? 'SUCCESS' : 'FAILED'}`);
-        
-      } catch (error) {
-        console.error(`💥 DEBUG: Error initializing ${botRecord.bot_name}:`, error.message);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    
-    this.debugActiveBots();
-  }
-
-  getInitializationStatus() {
-    return {
-      isInitialized: this.isInitialized,
-      activeBots: this.activeBots.size,
-      attempts: this.initializationAttempts,
-      maxAttempts: this.maxInitializationAttempts,
-      status: this.isInitialized ? 'READY' : 'INITIALIZING'
-    };
-  }
-
-  // UPDATED: Enhanced start handler to handle custom bot welcome
-  handleStart = async (ctx) => {
+  handleUserMessage = async (ctx, metaBotInfo, user, message) => {
     try {
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      console.log(`🚀 Start command received for ${metaBotInfo.botName} (Type: ${metaBotInfo.botRecord.bot_type}) from ${user.first_name}`);
-      
-      await this.setBotCommands(ctx.telegram, null, user.id);
-      
       await UserLog.upsert({
         bot_id: metaBotInfo.mainBotId,
         user_id: user.id,
         user_username: user.username,
         user_first_name: user.first_name,
-        last_interaction: new Date(),
-        first_interaction: new Date(),
-        interaction_count: 1
+        last_interaction: new Date()
       });
       
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: message,
+        message_id: ctx.message.message_id,
+        message_type: 'text'
+      });
       
-      if (isAdmin) {
-        await this.showAdminDashboard(ctx, metaBotInfo);
-      } else {
-        // For custom bots, check if there's a custom welcome flow
-        if (metaBotInfo.botRecord.bot_type === 'custom' && metaBotInfo.botRecord.custom_flow_data) {
-          const flow = metaBotInfo.botRecord.custom_flow_data;
-          if (flow.welcome_message) {
-            await ctx.replyWithMarkdown(flow.welcome_message.replace(/{botName}/g, metaBotInfo.botName));
-            return;
-          }
-        }
-        
-        // Fall back to regular welcome for quick bots or custom bots without custom welcome
-        await this.showUserWelcome(ctx, metaBotInfo);
-      }
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
+      
+      const successMsg = await ctx.reply('✅ Your message has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`📨 New message from ${user.first_name} to ${metaBotInfo.botName}`);
       
     } catch (error) {
-      console.error('Start handler error:', error);
-      await ctx.reply('Welcome! Send me a message, image, or video.');
+      console.error('User message handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your message. Please try again.');
     }
   };
-  
+
+  // Keep all other existing methods (dashboard, broadcast, stats, admins, etc.)
   showAdminDashboard = async (ctx, metaBotInfo) => {
     try {
       const stats = await this.getQuickStats(metaBotInfo.mainBotId);
@@ -1334,7 +1396,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading dashboard.');
     }
   };
-  
+
   // UPDATED: Use your current default welcome message format
   getWelcomeMessage = async (botId) => {
     try {
@@ -1364,20 +1426,7 @@ startReply = async (ctx, feedbackId) => {
         `_This Bot is created by @MarCreatorBot_`;
     }
   };
-  
-  showUserWelcome = async (ctx, metaBotInfo) => {
-    try {
-      let welcomeMessage = await this.getWelcomeMessage(metaBotInfo.mainBotId);
-      
-      welcomeMessage = welcomeMessage.replace(/{botName}/g, metaBotInfo.botName);
-      
-      await ctx.replyWithMarkdown(welcomeMessage);
-    } catch (error) {
-      console.error('User welcome error:', error);
-      await ctx.replyWithMarkdown(`👋 Welcome to *${metaBotInfo.botName}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`);
-    }
-  };
-  
+
   handleDashboard = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1393,7 +1442,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading dashboard.');
     }
   };
-  
+
   handleSettingsCommand = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1410,7 +1459,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading settings.');
     }
   };
-  
+
   showSettings = async (ctx, botId) => {
     try {
       const bot = await Bot.findByPk(botId);
@@ -1440,82 +1489,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading settings.');
     }
   };
-  
-  handleSettingsAction = async (ctx) => {
-    try {
-      const action = ctx.match[1];
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      await ctx.answerCbQuery();
-      
-      const isOwner = await this.checkOwnerAccess(metaBotInfo.mainBotId, user.id);
-      if (!isOwner) {
-        await ctx.reply('❌ Only bot owner can change settings.');
-        return;
-      }
-      
-      switch (action) {
-        case 'welcome':
-          await this.startChangeWelcomeMessage(ctx, metaBotInfo.mainBotId);
-          break;
-        case 'reset_welcome':
-          await this.resetWelcomeMessage(ctx, metaBotInfo.mainBotId);
-          break;
-        default:
-          await ctx.reply('⚠️ Action not available');
-      }
-    } catch (error) {
-      console.error('Settings action error:', error);
-      await ctx.reply('❌ Error processing settings action');
-    }
-  };
-  
-  // UPDATED: Show the current default format in the change message prompt
-  startChangeWelcomeMessage = async (ctx, botId) => {
-    try {
-      this.welcomeMessageSessions.set(ctx.from.id, {
-        botId: botId,
-        step: 'awaiting_welcome_message'
-      });
-      
-      const bot = await Bot.findByPk(botId);
-      const currentMessage = bot.welcome_message || `👋 Welcome to *${bot.bot_name}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`;
-      
-      await ctx.reply(
-        `✏️ *Change Welcome Message*\n\n` +
-        `*Current Message:*\n${currentMessage}\n\n` +
-        `Please send the new welcome message:\n\n` +
-        `*Tips:*\n` +
-        `• Use {botName} as placeholder for bot name\n` +
-        `• Markdown formatting is supported\n` +
-        `• Keep it welcoming and informative\n\n` +
-        `*Cancel:* Type /cancel`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start change welcome message error:', error);
-      await ctx.reply('❌ Error starting welcome message change.');
-    }
-  };
-  
-  resetWelcomeMessage = async (ctx, botId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      await bot.update({ welcome_message: null });
-      
-      const successMsg = await ctx.reply('✅ Welcome message reset to default.');
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      await this.showSettings(ctx, botId);
-      
-    } catch (error) {
-      console.error('Reset welcome message error:', error);
-      await ctx.reply('❌ Error resetting welcome message.');
-    }
-  };
-  
+
   handleBroadcastCommand = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1532,7 +1506,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error starting broadcast.');
     }
   };
-  
+
   handleStatsCommand = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1542,7 +1516,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading statistics.');
     }
   };
-  
+
   handleAdminsCommand = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1559,7 +1533,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error loading admins.');
     }
   };
-  
+
   handleHelp = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -1602,7 +1576,792 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('Use /start to begin.');
     }
   };
-  
+
+  // Keep all other existing utility methods
+  getBotInstanceByDbId = (dbId) => {
+    const botData = this.activeBots.get(parseInt(dbId));
+    if (!botData) {
+      console.error(`❌ Bot instance not found for DB ID: ${dbId}`);
+      console.error(`📊 Available bot IDs:`, Array.from(this.activeBots.keys()));
+      return null;
+    }
+    return botData.instance;
+  };
+
+  debugActiveBots = () => {
+    console.log('\n🐛 DEBUG: Active Bots Status');
+    console.log(`📊 Total active bots: ${this.activeBots.size}`);
+    console.log(`🏁 Initialization status: ${this.isInitialized ? 'COMPLETE' : 'PENDING'}`);
+    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
+    
+    if (this.activeBots.size === 0) {
+      console.log('❌ No active bots found in memory!');
+    } else {
+      for (const [dbId, botData] of this.activeBots.entries()) {
+        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Type: ${botData.record.bot_type} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
+      }
+    }
+  };
+
+  async forceReinitializeAllBots() {
+    console.log('🔄 FORCE: Reinitializing all mini-bots...');
+    this.initializationAttempts = 0;
+    this.isInitialized = false;
+    return await this.initializeAllBots();
+  }
+
+  getInitializationStatus() {
+    return {
+      isInitialized: this.isInitialized,
+      activeBots: this.activeBots.size,
+      attempts: this.initializationAttempts,
+      maxAttempts: this.maxInitializationAttempts,
+      status: this.isInitialized ? 'READY' : 'INITIALIZING'
+    };
+  }
+
+  getMediaTypeEmoji = (messageType) => {
+    const emojiMap = {
+      'text': '💬',
+      'image': '🖼️',
+      'video': '🎥',
+      'document': '📎',
+      'media_group': '🖼️',
+      'audio': '🎵',
+      'voice': '🎤',
+      'sticker': '🤡'
+    };
+    return emojiMap[messageType] || '📄';
+  };
+
+  startReply = async (ctx, feedbackId) => {
+    try {
+      const feedback = await Feedback.findByPk(feedbackId);
+      if (!feedback) {
+        await ctx.reply('❌ Message not found');
+        return;
+      }
+      
+      this.replySessions.set(ctx.from.id, {
+        feedbackId: feedbackId,
+        userId: feedback.user_id,
+        step: 'awaiting_reply'
+      });
+      
+      await ctx.reply(
+        `💬 *Replying to ${feedback.user_first_name}*\n\n` +
+        `Please type your reply message:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start reply error:', error);
+      await ctx.reply('❌ Error starting reply');
+    }
+  };
+
+  sendReply = async (ctx, feedbackId, userId, replyText) => {
+    try {
+      console.log(`💬 Attempting to send reply for feedback ID: ${feedbackId}`);
+      
+      const feedback = await Feedback.findByPk(feedbackId);
+      if (!feedback) {
+        await ctx.reply('❌ Message not found.');
+        return;
+      }
+
+      console.log(`🔍 Feedback found, bot_id: ${feedback.bot_id}`);
+      
+      const botInstance = this.getBotInstanceByDbId(feedback.bot_id);
+      
+      if (!botInstance) {
+        console.error('❌ Bot instance not found for reply');
+        this.debugActiveBots();
+        await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+        return;
+      }
+      
+      console.log(`✅ Bot instance found, sending reply to user: ${userId}`);
+      
+      await botInstance.telegram.sendMessage(
+        userId,
+        `💬 *Reply from admin:*\n\n${replyText}\n\n` +
+        `_This is a reply to your message_`,
+        { parse_mode: 'Markdown' }
+      );
+      
+      await feedback.update({
+        is_replied: true,
+        reply_message: replyText,
+        replied_by: ctx.from.id,
+        replied_at: new Date()
+      });
+      
+      const successMsg = await ctx.reply('✅ Reply sent successfully!');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+    } catch (error) {
+      console.error('Send reply error:', error);
+      await ctx.reply('❌ Error sending reply. User might have blocked the bot.');
+    }
+  };
+
+  startBroadcast = async (ctx, botId) => {
+    try {
+      const userCount = await UserLog.count({ where: { bot_id: botId } });
+      
+      if (userCount === 0) {
+        await ctx.reply('❌ No users found for broadcasting.');
+        return;
+      }
+      
+      this.broadcastSessions.set(ctx.from.id, {
+        botId: botId,
+        step: 'awaiting_message'
+      });
+      
+      await ctx.reply(
+        `📢 *Send Broadcast*\n\n` +
+        `*Recipients:* ${userCount} users\n\n` +
+        `Please type your broadcast message:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start broadcast error:', error);
+      await ctx.reply('❌ Error starting broadcast.');
+    }
+  };
+
+  sendBroadcast = async (ctx, botId, message) => {
+    try {
+      console.log(`📢 Starting broadcast for bot ID: ${botId}`);
+      
+      const users = await UserLog.findAll({ 
+        where: { bot_id: botId },
+        attributes: ['user_id']
+      });
+      
+      console.log(`📊 Broadcasting to ${users.length} users`);
+      
+      let successCount = 0;
+      let failCount = 0;
+      
+      const progressMsg = await ctx.reply(`🔄 Sending broadcast to ${users.length} users...\n✅ Sent: 0\n❌ Failed: 0`);
+      
+      const botInstance = this.getBotInstanceByDbId(botId);
+      
+      if (!botInstance) {
+        console.error('❌ Bot instance not found for broadcast');
+        this.debugActiveBots();
+        await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+        return;
+      }
+      
+      console.log(`✅ Bot instance found, starting broadcast...`);
+      
+      const escapeMarkdown = (text) => {
+        return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+      };
+      
+      const safeMessage = escapeMarkdown(message);
+      
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
+            parse_mode: 'MarkdownV2'
+          });
+          successCount++;
+          
+          if (i % 10 === 0) {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              progressMsg.message_id,
+              null,
+              `🔄 Sending broadcast to ${users.length} users...\n✅ Sent: ${successCount}\n❌ Failed: ${failCount}`
+            );
+          }
+          
+          if (i % 30 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (error) {
+          failCount++;
+          console.error(`Failed to send to user ${user.user_id}:`, error.message);
+          
+          if (error.message.includes('parse entities')) {
+            try {
+              await botInstance.telegram.sendMessage(user.user_id, message, {
+                parse_mode: 'HTML'
+              });
+              successCount++;
+              failCount--;
+              console.log(`✅ Successfully sent to user ${user.user_id} using HTML format`);
+            } catch (htmlError) {
+              console.error(`HTML format also failed for user ${user.user_id}:`, htmlError.message);
+              
+              try {
+                await botInstance.telegram.sendMessage(user.user_id, message);
+                successCount++;
+                failCount--;
+                console.log(`✅ Successfully sent to user ${user.user_id} as plain text`);
+              } catch (plainError) {
+                console.error(`Plain text also failed for user ${user.user_id}:`, plainError.message);
+              }
+            }
+          }
+        }
+      }
+      
+      await BroadcastHistory.create({
+        bot_id: botId,
+        sent_by: ctx.from.id,
+        message: message,
+        total_users: users.length,
+        successful_sends: successCount,
+        failed_sends: failCount
+      });
+      
+      const successRate = ((successCount / users.length) * 100).toFixed(1);
+      
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        progressMsg.message_id,
+        null,
+        `✅ *Broadcast Completed!*\n\n` +
+        `*Recipients:* ${users.length}\n` +
+        `*✅ Successful:* ${successCount}\n` +
+        `*❌ Failed:* ${failCount}\n` +
+        `*📊 Success Rate:* ${successRate}%`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Send broadcast error:', error);
+      await ctx.reply('❌ Error sending broadcast: ' + error.message);
+    }
+  };
+
+  showStats = async (ctx, botId) => {
+    try {
+      const userCount = await UserLog.count({ where: { bot_id: botId } });
+      const messageCount = await Feedback.count({ where: { bot_id: botId } });
+      const pendingCount = await Feedback.count({ 
+        where: { bot_id: botId, is_replied: false } 
+      });
+      
+      const messageTypes = await Feedback.findAll({
+        where: { bot_id: botId },
+        attributes: ['message_type', [Feedback.sequelize.fn('COUNT', Feedback.sequelize.col('id')), 'count']],
+        group: ['message_type']
+      });
+      
+      let typeBreakdown = '';
+      messageTypes.forEach(type => {
+        typeBreakdown += `• ${this.getMediaTypeEmoji(type.message_type)} ${type.message_type}: ${type.dataValues.count}\n`;
+      });
+      
+      const statsMessage = `📊 *Bot Statistics*\n\n` +
+        `👥 Total Users: ${userCount}\n` +
+        `💬 Total Messages: ${messageCount}\n` +
+        `📨 Pending Replies: ${pendingCount}\n` +
+        `🔄 Status: ✅ Active\n\n` +
+        `*Message Types:*\n${typeBreakdown}`;
+      
+      await ctx.replyWithMarkdown(statsMessage);
+      
+    } catch (error) {
+      console.error('Show stats error:', error);
+      await ctx.reply('❌ Error loading statistics.');
+    }
+  };
+
+  showAdmins = async (ctx, botId) => {
+    try {
+      const admins = await Admin.findAll({
+        where: { bot_id: botId },
+        include: [{ model: User, as: 'User' }]
+      });
+      
+      const bot = await Bot.findByPk(botId);
+      
+      let message = `👥 *Admin Management*\n\n` +
+        `*Total Admins:* ${admins.length}\n\n` +
+        `*Current Admins:*\n`;
+      
+      admins.forEach((admin, index) => {
+        const userInfo = admin.User ? 
+          `@${admin.User.username} (${admin.User.first_name})` : 
+          `User#${admin.admin_user_id}`;
+        
+        const isOwner = admin.admin_user_id === bot.owner_id;
+        
+        message += `*${index + 1}.* ${userInfo} ${isOwner ? '👑 (Owner)' : ''}\n`;
+      });
+      
+      const keyboardButtons = [];
+      
+      admins.filter(admin => admin.admin_user_id !== bot.owner_id).forEach(admin => {
+        keyboardButtons.push([
+          Markup.button.callback(
+            `➖ Remove ${admin.User?.username || `User#${admin.admin_user_id}`}`,
+            `remove_admin_${admin.id}`
+          )
+        ]);
+      });
+      
+      keyboardButtons.push(
+        [Markup.button.callback('➕ Add Admin', 'admin_add')],
+        [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
+      );
+      
+      const keyboard = Markup.inlineKeyboard(keyboardButtons);
+      
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+      
+    } catch (error) {
+      console.error('Show admins error:', error);
+      await ctx.reply('❌ Error loading admins.');
+    }
+  };
+
+  removeAdmin = async (ctx, botId, adminId) => {
+    try {
+      const admin = await Admin.findByPk(adminId);
+      
+      if (!admin) {
+        await ctx.reply('❌ Admin not found.');
+        return;
+      }
+      
+      const bot = await Bot.findByPk(botId);
+      
+      if (admin.admin_user_id === bot.owner_id) {
+        await ctx.reply('❌ Cannot remove bot owner.');
+        return;
+      }
+      
+      const adminUsername = admin.admin_username || `User#${admin.admin_user_id}`;
+      
+      await admin.destroy();
+      
+      const successMsg = await ctx.reply(`✅ Admin ${adminUsername} has been removed successfully.`);
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      await this.showAdmins(ctx, botId);
+      
+    } catch (error) {
+      console.error('Remove admin error:', error);
+      await ctx.reply('❌ Error removing admin.');
+    }
+  };
+
+  startAddAdmin = async (ctx, botId) => {
+    try {
+      this.adminSessions.set(ctx.from.id, {
+        botId: botId,
+        step: 'awaiting_admin_input'
+      });
+      
+      await ctx.reply(
+        `👥 *Add New Admin*\n\n` +
+        `Please send the new admin's Telegram *User ID* or *Username*:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start add admin error:', error);
+      await ctx.reply('❌ Error adding admin');
+    }
+  };
+
+  processAddAdmin = async (ctx, botId, input) => {
+    try {
+      let targetUserId;
+      
+      if (/^\d+$/.test(input)) {
+        targetUserId = parseInt(input);
+      } else {
+        const username = input.replace('@', '');
+        const user = await User.findOne({ where: { username: username } });
+        if (!user) {
+          await ctx.reply(`❌ User @${username} not found. Ask them to start @MarCreatorBot first.`);
+          return;
+        }
+        targetUserId = user.telegram_id;
+      }
+      
+      const existingAdmin = await Admin.findOne({
+        where: { bot_id: botId, admin_user_id: targetUserId }
+      });
+      
+      if (existingAdmin) {
+        await ctx.reply('❌ This user is already an admin.');
+        return;
+      }
+      
+      const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
+      if (!targetUser) {
+        await ctx.reply('❌ User not found. Ask them to start @MarCreatorBot first.');
+        return;
+      }
+      
+      await Admin.create({
+        bot_id: botId,
+        admin_user_id: targetUserId,
+        admin_username: targetUser.username,
+        added_by: ctx.from.id,
+        permissions: {
+          can_reply: true,
+          can_broadcast: true,
+          can_manage_admins: false,
+          can_view_stats: true,
+          can_deactivate: false
+        }
+      });
+      
+      const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
+      
+      const successMsg = await ctx.reply(
+        `✅ *${userDisplay} added as admin!*\n\n` +
+        `They can now reply to messages and send broadcasts.`,
+        { parse_mode: 'Markdown' }
+      );
+      
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+    } catch (error) {
+      console.error('Process add admin error:', error);
+      await ctx.reply('❌ Error adding admin.');
+    }
+  };
+
+  showAbout = async (ctx, metaBotInfo) => {
+    try {
+      const aboutMessage = `ℹ️ *About ${metaBotInfo.botName}*\n\n` +
+        `*Bot Username:* @${metaBotInfo.botUsername}\n` +
+        `*Created via:* @MarCreatorBot\n\n` +
+        `*Create your own bot:* @MarCreatorBot`;
+      
+      await ctx.replyWithMarkdown(aboutMessage);
+    } catch (error) {
+      console.error('About error:', error);
+      await ctx.reply(`About ${metaBotInfo.botName}`);
+    }
+  };
+
+  notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
+    try {
+      console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
+      
+      const admins = await Admin.findAll({
+        where: { bot_id: botId },
+        include: [{ model: User, as: 'User' }]
+      });
+      
+      const bot = await Bot.findByPk(botId);
+      
+      const botInstance = this.getBotInstanceByDbId(botId);
+      
+      if (!botInstance) {
+        console.error('❌ Bot instance not found for real-time notification');
+        this.debugActiveBots();
+        return;
+      }
+      
+      const mediaEmoji = this.getMediaTypeEmoji(messageType);
+      const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
+      
+      for (const admin of admins) {
+        if (admin.User) {
+          try {
+            if (messageType === 'image' && originalMessage && originalMessage.photo) {
+              await botInstance.telegram.sendPhoto(
+                admin.User.telegram_id,
+                originalMessage.photo[originalMessage.photo.length - 1].file_id,
+                {
+                  caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                           `💬 ${originalMessage.caption || '[No caption]'}`,
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else if (messageType === 'video' && originalMessage && originalMessage.video) {
+              await botInstance.telegram.sendVideo(
+                admin.User.telegram_id,
+                originalMessage.video.file_id,
+                {
+                  caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                           `💬 ${originalMessage.caption || '[No caption]'}`,
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else if (messageType === 'document' && originalMessage && originalMessage.document) {
+              await botInstance.telegram.sendDocument(
+                admin.User.telegram_id,
+                originalMessage.document.file_id,
+                {
+                  caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                           `💬 ${originalMessage.caption || '[No caption]'}`,
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
+              await botInstance.telegram.sendAudio(
+                admin.User.telegram_id,
+                originalMessage.audio.file_id,
+                {
+                  caption: `🔔 *New Audio from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                           `💬 ${originalMessage.caption || '[No caption]'}`,
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
+              await botInstance.telegram.sendVoice(
+                admin.User.telegram_id,
+                originalMessage.voice.file_id,
+                {
+                  caption: `🔔 *New Voice Message from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*`,
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else if (messageType === 'media_group' && originalMessage) {
+              await botInstance.telegram.sendMessage(
+                admin.User.telegram_id,
+                `🔔 *Media Album from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
+                `*This is a media album with multiple files.*`,
+                { 
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                  ])
+                }
+              );
+            } else {
+              let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
+                `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
+              
+              if (messageType === 'text') {
+                notificationMessage += `*Message:* ${feedback.message}`;
+              } else {
+                notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
+                  `*Type:* ${messageType}`;
+              }
+              
+              await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              });
+            }
+            
+            console.log(`🔔 Media notification sent to admin: ${admin.User.username}`);
+          } catch (error) {
+            console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
+          }
+        }
+      }
+      
+      const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
+      if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
+        try {
+          if (messageType === 'image' && originalMessage && originalMessage.photo) {
+            await botInstance.telegram.sendPhoto(
+              owner.telegram_id,
+              originalMessage.photo[originalMessage.photo.length - 1].file_id,
+              {
+                caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              }
+            );
+          } else if (messageType === 'video' && originalMessage && originalMessage.video) {
+            await botInstance.telegram.sendVideo(
+              owner.telegram_id,
+              originalMessage.video.file_id,
+              {
+                caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              }
+            );
+          } else if (messageType === 'document' && originalMessage && originalMessage.document) {
+            await botInstance.telegram.sendDocument(
+              owner.telegram_id,
+              originalMessage.document.file_id,
+              {
+                caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              }
+            );
+          } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
+            await botInstance.telegram.sendAudio(
+              owner.telegram_id,
+              originalMessage.audio.file_id,
+              {
+                caption: `🔔 *New Audio from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
+                         `💬 ${originalMessage.caption || '[No caption]'}`,
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              }
+            );
+          } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
+            await botInstance.telegram.sendVoice(
+              owner.telegram_id,
+              originalMessage.voice.file_id,
+              {
+                caption: `🔔 *New Voice Message from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*`,
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+                ])
+              }
+            );
+          } else {
+            let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
+              `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
+            
+            if (messageType === 'text') {
+              notificationMessage += `*Message:* ${feedback.message}`;
+            } else {
+              notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
+                `*Type:* ${messageType}`;
+            }
+            
+            await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
+              ])
+            });
+          }
+          
+          console.log(`🔔 Media notification sent to owner: ${owner.username}`);
+        } catch (error) {
+          console.error('Failed to notify owner:', error.message);
+        }
+      }
+      
+      console.log(`🔔 Real-time media notification sent for ${bot.bot_name}`);
+      
+    } catch (error) {
+      console.error('Real-time notification error:', error);
+    }
+  };
+
+  getQuickStats = async (botId) => {
+    try {
+      const userCount = await UserLog.count({ where: { bot_id: botId } });
+      const messageCount = await Feedback.count({ where: { bot_id: botId } });
+      const pendingCount = await Feedback.count({ 
+        where: { bot_id: botId, is_replied: false } 
+      });
+      
+      return {
+        totalUsers: userCount,
+        totalMessages: messageCount,
+        pendingMessages: pendingCount
+      };
+    } catch (error) {
+      return { totalUsers: 0, totalMessages: 0, pendingMessages: 0 };
+    }
+  };
+
+  checkAdminAccess = async (botId, userId) => {
+    try {
+      const bot = await Bot.findByPk(botId);
+      if (bot.owner_id == userId) return true;
+      
+      const admin = await Admin.findOne({
+        where: { bot_id: botId, admin_user_id: userId }
+      });
+      
+      return !!admin;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  checkOwnerAccess = async (botId, userId) => {
+    try {
+      const bot = await Bot.findByPk(botId);
+      return bot.owner_id == userId;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  stopBot = async (botId) => {
+    try {
+      const botData = this.activeBots.get(botId);
+      if (botData && botData.instance) {
+        console.log(`🛑 Stopping bot ${botId}...`);
+        await botData.instance.stop();
+        this.activeBots.delete(botId);
+        console.log(`✅ Bot ${botId} stopped successfully`);
+      }
+    } catch (error) {
+      console.error(`Error stopping bot ${botId}:`, error);
+    }
+  };
+
+  healthCheck = () => {
+    console.log('🏥 Mini-bot Manager Health Check:');
+    console.log(`📊 Active bots: ${this.activeBots.size}`);
+    console.log(`🏁 Initialized: ${this.isInitialized}`);
+    console.log(`🔄 Initialization in progress: ${!!this.initializationPromise}`);
+    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
+    
+    this.debugActiveBots();
+    
+    return {
+      isHealthy: this.isInitialized && !this.initializationPromise,
+      activeBots: this.activeBots.size,
+      status: this.isInitialized ? 'READY' : 'INITIALIZING',
+      attempts: this.initializationAttempts
+    };
+  };
+
+  // Text message handler and other existing methods
   handleTextMessage = async (ctx) => {
     try {
       const user = ctx.from;
@@ -1670,7 +2429,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ An error occurred. Please try again.');
     }
   };
-  
+
   processWelcomeMessageChange = async (ctx, botId, newMessage) => {
     try {
       const bot = await Bot.findByPk(botId);
@@ -1686,40 +2445,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error updating welcome message.');
     }
   };
-  
-  handleUserMessage = async (ctx, metaBotInfo, user, message) => {
-    try {
-      await UserLog.upsert({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        last_interaction: new Date()
-      });
-      
-      const feedback = await Feedback.create({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        message: message,
-        message_id: ctx.message.message_id,
-        message_type: 'text'
-      });
-      
-      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
-      
-      const successMsg = await ctx.reply('✅ Your message has been received.');
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      console.log(`📨 New message from ${user.first_name} to ${metaBotInfo.botName}`);
-      
-    } catch (error) {
-      console.error('User message handler error:', error);
-      await ctx.reply('❌ Sorry, there was an error sending your message. Please try again.');
-    }
-  };
-  
+
   handleMiniAction = async (ctx) => {
     try {
       const action = ctx.match[1];
@@ -1772,7 +2498,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error processing action');
     }
   };
-  
+
   handleReplyAction = async (ctx) => {
     try {
       const feedbackId = ctx.match[1];
@@ -1793,7 +2519,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error starting reply');
     }
   };
-  
+
   handleAdminAction = async (ctx) => {
     try {
       const action = ctx.match[1];
@@ -1816,7 +2542,7 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error processing admin action');
     }
   };
-  
+
   handleRemoveAdminAction = async (ctx) => {
     try {
       const adminId = ctx.match[1];
@@ -1837,7 +2563,81 @@ startReply = async (ctx, feedbackId) => {
       await ctx.reply('❌ Error removing admin');
     }
   };
-  
+
+  handleSettingsAction = async (ctx) => {
+    try {
+      const action = ctx.match[1];
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      
+      await ctx.answerCbQuery();
+      
+      const isOwner = await this.checkOwnerAccess(metaBotInfo.mainBotId, user.id);
+      if (!isOwner) {
+        await ctx.reply('❌ Only bot owner can change settings.');
+        return;
+      }
+      
+      switch (action) {
+        case 'welcome':
+          await this.startChangeWelcomeMessage(ctx, metaBotInfo.mainBotId);
+          break;
+        case 'reset_welcome':
+          await this.resetWelcomeMessage(ctx, metaBotInfo.mainBotId);
+          break;
+        default:
+          await ctx.reply('⚠️ Action not available');
+      }
+    } catch (error) {
+      console.error('Settings action error:', error);
+      await ctx.reply('❌ Error processing settings action');
+    }
+  };
+
+  startChangeWelcomeMessage = async (ctx, botId) => {
+    try {
+      this.welcomeMessageSessions.set(ctx.from.id, {
+        botId: botId,
+        step: 'awaiting_welcome_message'
+      });
+      
+      const bot = await Bot.findByPk(botId);
+      const currentMessage = bot.welcome_message || `👋 Welcome to *${bot.bot_name}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`;
+      
+      await ctx.reply(
+        `✏️ *Change Welcome Message*\n\n` +
+        `*Current Message:*\n${currentMessage}\n\n` +
+        `Please send the new welcome message:\n\n` +
+        `*Tips:*\n` +
+        `• Use {botName} as placeholder for bot name\n` +
+        `• Markdown formatting is supported\n` +
+        `• Keep it welcoming and informative\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start change welcome message error:', error);
+      await ctx.reply('❌ Error starting welcome message change.');
+    }
+  };
+
+  resetWelcomeMessage = async (ctx, botId) => {
+    try {
+      const bot = await Bot.findByPk(botId);
+      await bot.update({ welcome_message: null });
+      
+      const successMsg = await ctx.reply('✅ Welcome message reset to default.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      await this.showSettings(ctx, botId);
+      
+    } catch (error) {
+      console.error('Reset welcome message error:', error);
+      await ctx.reply('❌ Error resetting welcome message.');
+    }
+  };
+
   showUserMessages = async (ctx, botId) => {
     try {
       const pendingMessages = await Feedback.findAll({
@@ -1899,746 +2699,6 @@ startReply = async (ctx, feedbackId) => {
       console.error('Show messages error:', error);
       await ctx.reply('❌ Error loading messages.');
     }
-  };
-
-  getMediaTypeEmoji = (messageType) => {
-    const emojiMap = {
-      'text': '💬',
-      'image': '🖼️',
-      'video': '🎥',
-      'document': '📎',
-      'media_group': '🖼️',
-      'audio': '🎵',
-      'voice': '🎤',
-      'sticker': '🤡'
-    };
-    return emojiMap[messageType] || '📄';
-  };
-  
-startReply = async (ctx, feedbackId) => {
-  try {
-    const feedback = await Feedback.findByPk(feedbackId);
-    if (!feedback) {
-      await ctx.reply('❌ Message not found');
-      return;
-    }
-    
-    this.replySessions.set(ctx.from.id, {
-      feedbackId: feedbackId,
-      userId: feedback.user_id,
-      step: 'awaiting_reply'
-    });
-    
-    await ctx.reply(
-      `💬 *Replying to ${feedback.user_first_name}*\n\n` +
-      `Please type your reply message:\n\n` +
-      `*Cancel:* Type /cancel`,
-      { parse_mode: 'Markdown' }
-    );
-    
-  } catch (error) {
-    console.error('Start reply error:', error);
-    await ctx.reply('❌ Error starting reply');
-  }
-};
-  
-  sendReply = async (ctx, feedbackId, userId, replyText) => {
-    try {
-      console.log(`💬 Attempting to send reply for feedback ID: ${feedbackId}`);
-      
-      const feedback = await Feedback.findByPk(feedbackId);
-      if (!feedback) {
-        await ctx.reply('❌ Message not found.');
-        return;
-      }
-
-      console.log(`🔍 Feedback found, bot_id: ${feedback.bot_id}`);
-      
-      const botInstance = this.getBotInstanceByDbId(feedback.bot_id);
-      
-      if (!botInstance) {
-        console.error('❌ Bot instance not found for reply');
-        this.debugActiveBots();
-        await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
-        return;
-      }
-      
-      console.log(`✅ Bot instance found, sending reply to user: ${userId}`);
-      
-      await botInstance.telegram.sendMessage(
-        userId,
-        `💬 *Reply from admin:*\n\n${replyText}\n\n` +
-        `_This is a reply to your message_`,
-        { parse_mode: 'Markdown' }
-      );
-      
-      await feedback.update({
-        is_replied: true,
-        reply_message: replyText,
-        replied_by: ctx.from.id,
-        replied_at: new Date()
-      });
-      
-      const successMsg = await ctx.reply('✅ Reply sent successfully!');
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-    } catch (error) {
-      console.error('Send reply error:', error);
-      await ctx.reply('❌ Error sending reply. User might have blocked the bot.');
-    }
-  };
-  
-  startBroadcast = async (ctx, botId) => {
-    try {
-      const userCount = await UserLog.count({ where: { bot_id: botId } });
-      
-      if (userCount === 0) {
-        await ctx.reply('❌ No users found for broadcasting.');
-        return;
-      }
-      
-      this.broadcastSessions.set(ctx.from.id, {
-        botId: botId,
-        step: 'awaiting_message'
-      });
-      
-      await ctx.reply(
-        `📢 *Send Broadcast*\n\n` +
-        `*Recipients:* ${userCount} users\n\n` +
-        `Please type your broadcast message:\n\n` +
-        `*Cancel:* Type /cancel`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start broadcast error:', error);
-      await ctx.reply('❌ Error starting broadcast.');
-    }
-  };
-  
-sendBroadcast = async (ctx, botId, message) => {
-  try {
-    console.log(`📢 Starting broadcast for bot ID: ${botId}`);
-    
-    const users = await UserLog.findAll({ 
-      where: { bot_id: botId },
-      attributes: ['user_id']
-    });
-    
-    console.log(`📊 Broadcasting to ${users.length} users`);
-    
-    let successCount = 0;
-    let failCount = 0;
-    
-    const progressMsg = await ctx.reply(`🔄 Sending broadcast to ${users.length} users...\n✅ Sent: 0\n❌ Failed: 0`);
-    
-    const botInstance = this.getBotInstanceByDbId(botId);
-    
-    if (!botInstance) {
-      console.error('❌ Bot instance not found for broadcast');
-      this.debugActiveBots();
-      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
-      return;
-    }
-    
-    console.log(`✅ Bot instance found, starting broadcast...`);
-    
-    const escapeMarkdown = (text) => {
-      return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
-    };
-    
-    const safeMessage = escapeMarkdown(message);
-    
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      try {
-        await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
-          parse_mode: 'MarkdownV2'
-        });
-        successCount++;
-        
-        if (i % 10 === 0) {
-          await ctx.telegram.editMessageText(
-            ctx.chat.id,
-            progressMsg.message_id,
-            null,
-            `🔄 Sending broadcast to ${users.length} users...\n✅ Sent: ${successCount}\n❌ Failed: ${failCount}`
-          );
-        }
-        
-        if (i % 30 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error) {
-        failCount++;
-        console.error(`Failed to send to user ${user.user_id}:`, error.message);
-        
-        if (error.message.includes('parse entities')) {
-          try {
-            await botInstance.telegram.sendMessage(user.user_id, message, {
-              parse_mode: 'HTML'
-            });
-            successCount++;
-            failCount--;
-            console.log(`✅ Successfully sent to user ${user.user_id} using HTML format`);
-          } catch (htmlError) {
-            console.error(`HTML format also failed for user ${user.user_id}:`, htmlError.message);
-            
-            try {
-              await botInstance.telegram.sendMessage(user.user_id, message);
-              successCount++;
-              failCount--;
-              console.log(`✅ Successfully sent to user ${user.user_id} as plain text`);
-            } catch (plainError) {
-              console.error(`Plain text also failed for user ${user.user_id}:`, plainError.message);
-            }
-          }
-        }
-      }
-    }
-    
-    await BroadcastHistory.create({
-      bot_id: botId,
-      sent_by: ctx.from.id,
-      message: message,
-      total_users: users.length,
-      successful_sends: successCount,
-      failed_sends: failCount
-    });
-    
-    const successRate = ((successCount / users.length) * 100).toFixed(1);
-    
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      progressMsg.message_id,
-      null,
-      `✅ *Broadcast Completed!*\n\n` +
-      `*Recipients:* ${users.length}\n` +
-      `*✅ Successful:* ${successCount}\n` +
-      `*❌ Failed:* ${failCount}\n` +
-      `*📊 Success Rate:* ${successRate}%`,
-      { parse_mode: 'Markdown' }
-    );
-    
-  } catch (error) {
-    console.error('Send broadcast error:', error);
-    await ctx.reply('❌ Error sending broadcast: ' + error.message);
-  }
-};
-  
-  showStats = async (ctx, botId) => {
-    try {
-      const userCount = await UserLog.count({ where: { bot_id: botId } });
-      const messageCount = await Feedback.count({ where: { bot_id: botId } });
-      const pendingCount = await Feedback.count({ 
-        where: { bot_id: botId, is_replied: false } 
-      });
-      
-      const messageTypes = await Feedback.findAll({
-        where: { bot_id: botId },
-        attributes: ['message_type', [Feedback.sequelize.fn('COUNT', Feedback.sequelize.col('id')), 'count']],
-        group: ['message_type']
-      });
-      
-      let typeBreakdown = '';
-      messageTypes.forEach(type => {
-        typeBreakdown += `• ${this.getMediaTypeEmoji(type.message_type)} ${type.message_type}: ${type.dataValues.count}\n`;
-      });
-      
-      const statsMessage = `📊 *Bot Statistics*\n\n` +
-        `👥 Total Users: ${userCount}\n` +
-        `💬 Total Messages: ${messageCount}\n` +
-        `📨 Pending Replies: ${pendingCount}\n` +
-        `🔄 Status: ✅ Active\n\n` +
-        `*Message Types:*\n${typeBreakdown}`;
-      
-      await ctx.replyWithMarkdown(statsMessage);
-      
-    } catch (error) {
-      console.error('Show stats error:', error);
-      await ctx.reply('❌ Error loading statistics.');
-    }
-  };
-  
-  showAdmins = async (ctx, botId) => {
-    try {
-      const admins = await Admin.findAll({
-        where: { bot_id: botId },
-        include: [{ model: User, as: 'User' }]
-      });
-      
-      const bot = await Bot.findByPk(botId);
-      
-      let message = `👥 *Admin Management*\n\n` +
-        `*Total Admins:* ${admins.length}\n\n` +
-        `*Current Admins:*\n`;
-      
-      admins.forEach((admin, index) => {
-        const userInfo = admin.User ? 
-          `@${admin.User.username} (${admin.User.first_name})` : 
-          `User#${admin.admin_user_id}`;
-        
-        const isOwner = admin.admin_user_id === bot.owner_id;
-        
-        message += `*${index + 1}.* ${userInfo} ${isOwner ? '👑 (Owner)' : ''}\n`;
-      });
-      
-      const keyboardButtons = [];
-      
-      admins.filter(admin => admin.admin_user_id !== bot.owner_id).forEach(admin => {
-        keyboardButtons.push([
-          Markup.button.callback(
-            `➖ Remove ${admin.User?.username || `User#${admin.admin_user_id}`}`,
-            `remove_admin_${admin.id}`
-          )
-        ]);
-      });
-      
-      keyboardButtons.push(
-        [Markup.button.callback('➕ Add Admin', 'admin_add')],
-        [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
-      );
-      
-      const keyboard = Markup.inlineKeyboard(keyboardButtons);
-      
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
-          ...keyboard
-        });
-      } else {
-        await ctx.replyWithMarkdown(message, keyboard);
-      }
-      
-    } catch (error) {
-      console.error('Show admins error:', error);
-      await ctx.reply('❌ Error loading admins.');
-    }
-  };
-  
-  removeAdmin = async (ctx, botId, adminId) => {
-    try {
-      const admin = await Admin.findByPk(adminId);
-      
-      if (!admin) {
-        await ctx.reply('❌ Admin not found.');
-        return;
-      }
-      
-      const bot = await Bot.findByPk(botId);
-      
-      if (admin.admin_user_id === bot.owner_id) {
-        await ctx.reply('❌ Cannot remove bot owner.');
-        return;
-      }
-      
-      const adminUsername = admin.admin_username || `User#${admin.admin_user_id}`;
-      
-      await admin.destroy();
-      
-      const successMsg = await ctx.reply(`✅ Admin ${adminUsername} has been removed successfully.`);
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      await this.showAdmins(ctx, botId);
-      
-    } catch (error) {
-      console.error('Remove admin error:', error);
-      await ctx.reply('❌ Error removing admin.');
-    }
-  };
-  
-  startAddAdmin = async (ctx, botId) => {
-    try {
-      this.adminSessions.set(ctx.from.id, {
-        botId: botId,
-        step: 'awaiting_admin_input'
-      });
-      
-      await ctx.reply(
-        `👥 *Add New Admin*\n\n` +
-        `Please send the new admin's Telegram *User ID* or *Username*:\n\n` +
-        `*Cancel:* Type /cancel`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start add admin error:', error);
-      await ctx.reply('❌ Error adding admin');
-    }
-  };
-  
-  processAddAdmin = async (ctx, botId, input) => {
-    try {
-      let targetUserId;
-      
-      if (/^\d+$/.test(input)) {
-        targetUserId = parseInt(input);
-      } else {
-        const username = input.replace('@', '');
-        const user = await User.findOne({ where: { username: username } });
-        if (!user) {
-          await ctx.reply(`❌ User @${username} not found. Ask them to start @MarCreatorBot first.`);
-          return;
-        }
-        targetUserId = user.telegram_id;
-      }
-      
-      const existingAdmin = await Admin.findOne({
-        where: { bot_id: botId, admin_user_id: targetUserId }
-      });
-      
-      if (existingAdmin) {
-        await ctx.reply('❌ This user is already an admin.');
-        return;
-      }
-      
-      const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
-      if (!targetUser) {
-        await ctx.reply('❌ User not found. Ask them to start @MarCreatorBot first.');
-        return;
-      }
-      
-      await Admin.create({
-        bot_id: botId,
-        admin_user_id: targetUserId,
-        admin_username: targetUser.username,
-        added_by: ctx.from.id,
-        permissions: {
-          can_reply: true,
-          can_broadcast: true,
-          can_manage_admins: false,
-          can_view_stats: true,
-          can_deactivate: false
-        }
-      });
-      
-      const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
-      
-      const successMsg = await ctx.reply(
-        `✅ *${userDisplay} added as admin!*\n\n` +
-        `They can now reply to messages and send broadcasts.`,
-        { parse_mode: 'Markdown' }
-      );
-      
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-    } catch (error) {
-      console.error('Process add admin error:', error);
-      await ctx.reply('❌ Error adding admin.');
-    }
-  };
-  
-  showAbout = async (ctx, metaBotInfo) => {
-    try {
-      const aboutMessage = `ℹ️ *About ${metaBotInfo.botName}*\n\n` +
-        `*Bot Username:* @${metaBotInfo.botUsername}\n` +
-        `*Created via:* @MarCreatorBot\n\n` +
-        `*Create your own bot:* @MarCreatorBot`;
-      
-      await ctx.replyWithMarkdown(aboutMessage);
-    } catch (error) {
-      console.error('About error:', error);
-      await ctx.reply(`About ${metaBotInfo.botName}`);
-    }
-  };
-  
-notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
-  try {
-    console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
-    
-    const admins = await Admin.findAll({
-      where: { bot_id: botId },
-      include: [{ model: User, as: 'User' }]
-    });
-    
-    const bot = await Bot.findByPk(botId);
-    
-    const botInstance = this.getBotInstanceByDbId(botId);
-    
-    if (!botInstance) {
-      console.error('❌ Bot instance not found for real-time notification');
-      this.debugActiveBots();
-      return;
-    }
-    
-    const mediaEmoji = this.getMediaTypeEmoji(messageType);
-    const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
-    
-    for (const admin of admins) {
-      if (admin.User) {
-        try {
-          if (messageType === 'image' && originalMessage && originalMessage.photo) {
-            await botInstance.telegram.sendPhoto(
-              admin.User.telegram_id,
-              originalMessage.photo[originalMessage.photo.length - 1].file_id,
-              {
-                caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'video' && originalMessage && originalMessage.video) {
-            await botInstance.telegram.sendVideo(
-              admin.User.telegram_id,
-              originalMessage.video.file_id,
-              {
-                caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'document' && originalMessage && originalMessage.document) {
-            await botInstance.telegram.sendDocument(
-              admin.User.telegram_id,
-              originalMessage.document.file_id,
-              {
-                caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
-            await botInstance.telegram.sendAudio(
-              admin.User.telegram_id,
-              originalMessage.audio.file_id,
-              {
-                caption: `🔔 *New Audio from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
-            await botInstance.telegram.sendVoice(
-              admin.User.telegram_id,
-              originalMessage.voice.file_id,
-              {
-                caption: `🔔 *New Voice Message from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'media_group' && originalMessage) {
-            await botInstance.telegram.sendMessage(
-              admin.User.telegram_id,
-              `🔔 *Media Album from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-              `💬 ${originalMessage.caption || '[No caption]'}\n\n` +
-              `*This is a media album with multiple files.*`,
-              { 
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else {
-            let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
-              `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
-            
-            if (messageType === 'text') {
-              notificationMessage += `*Message:* ${feedback.message}`;
-            } else {
-              notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-                `*Type:* ${messageType}`;
-            }
-            
-            await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            });
-          }
-          
-          console.log(`🔔 Media notification sent to admin: ${admin.User.username}`);
-        } catch (error) {
-          console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
-        }
-      }
-    }
-    
-    const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
-    if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
-      try {
-        if (messageType === 'image' && originalMessage && originalMessage.photo) {
-          await botInstance.telegram.sendPhoto(
-            owner.telegram_id,
-            originalMessage.photo[originalMessage.photo.length - 1].file_id,
-            {
-              caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}`,
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            }
-          );
-        } else if (messageType === 'video' && originalMessage && originalMessage.video) {
-          await botInstance.telegram.sendVideo(
-            owner.telegram_id,
-            originalMessage.video.file_id,
-            {
-              caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}`,
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            }
-          );
-        } else if (messageType === 'document' && originalMessage && originalMessage.document) {
-          await botInstance.telegram.sendDocument(
-            owner.telegram_id,
-            originalMessage.document.file_id,
-            {
-              caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}`,
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            }
-          );
-        } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
-          await botInstance.telegram.sendAudio(
-            owner.telegram_id,
-            originalMessage.audio.file_id,
-            {
-              caption: `🔔 *New Audio from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                       `💬 ${originalMessage.caption || '[No caption]'}`,
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            }
-          );
-        } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
-          await botInstance.telegram.sendVoice(
-            owner.telegram_id,
-            originalMessage.voice.file_id,
-            {
-              caption: `🔔 *New Voice Message from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*`,
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            }
-          );
-        } else {
-          let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
-            `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
-          
-          if (messageType === 'text') {
-            notificationMessage += `*Message:* ${feedback.message}`;
-          } else {
-            notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-              `*Type:* ${messageType}`;
-          }
-          
-          await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-            ])
-          });
-        }
-        
-        console.log(`🔔 Media notification sent to owner: ${owner.username}`);
-      } catch (error) {
-        console.error('Failed to notify owner:', error.message);
-      }
-    }
-    
-    console.log(`🔔 Real-time media notification sent for ${bot.bot_name}`);
-    
-  } catch (error) {
-    console.error('Real-time notification error:', error);
-  }
-};
-  getQuickStats = async (botId) => {
-    try {
-      const userCount = await UserLog.count({ where: { bot_id: botId } });
-      const messageCount = await Feedback.count({ where: { bot_id: botId } });
-      const pendingCount = await Feedback.count({ 
-        where: { bot_id: botId, is_replied: false } 
-      });
-      
-      return {
-        totalUsers: userCount,
-        totalMessages: messageCount,
-        pendingMessages: pendingCount
-      };
-    } catch (error) {
-      return { totalUsers: 0, totalMessages: 0, pendingMessages: 0 };
-    }
-  };
-  
-  checkAdminAccess = async (botId, userId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      if (bot.owner_id == userId) return true;
-      
-      const admin = await Admin.findOne({
-        where: { bot_id: botId, admin_user_id: userId }
-      });
-      
-      return !!admin;
-    } catch (error) {
-      return false;
-    }
-  };
-  
-  checkOwnerAccess = async (botId, userId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      return bot.owner_id == userId;
-    } catch (error) {
-      return false;
-    }
-  };
-  
-  stopBot = async (botId) => {
-    try {
-      const botData = this.activeBots.get(botId);
-      if (botData && botData.instance) {
-        console.log(`🛑 Stopping bot ${botId}...`);
-        await botData.instance.stop();
-        this.activeBots.delete(botId);
-        console.log(`✅ Bot ${botId} stopped successfully`);
-      }
-    } catch (error) {
-      console.error(`Error stopping bot ${botId}:`, error);
-    }
-  };
-
-  healthCheck = () => {
-    console.log('🏥 Mini-bot Manager Health Check:');
-    console.log(`📊 Active bots: ${this.activeBots.size}`);
-    console.log(`🏁 Initialized: ${this.isInitialized}`);
-    console.log(`🔄 Initialization in progress: ${!!this.initializationPromise}`);
-    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
-    
-    this.debugActiveBots();
-    
-    return {
-      isHealthy: this.isInitialized && !this.initializationPromise,
-      activeBots: this.activeBots.size,
-      status: this.isInitialized ? 'READY' : 'INITIALIZING',
-      attempts: this.initializationAttempts
-    };
   };
 }
 
