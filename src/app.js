@@ -1,4 +1,4 @@
-﻿// 📁 src/app.js - PRODUCTION READY WITH CUSTOM COMMAND BUILDER
+﻿// 📁 src/app.js - PRODUCTION READY WITH CUSTOM BUILDER
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -25,7 +25,20 @@ const {
   showPathwayInfoHandler,
   defaultHandler 
 } = require('./handlers/startHandler');
-const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
+const { 
+  createBotHandler, 
+  handleTokenInput, 
+  handleNameInput, 
+  cancelCreationHandler, 
+  isInCreationSession, 
+  getCreationStep,
+  handleQuickBotCreation,
+  handleCustomBotCreation,
+  showCustomBotTemplates,
+  handleTemplateSelection,
+  handleTemplateConfirmation,
+  handleBlankFlowCreation
+} = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 
@@ -223,10 +236,10 @@ class MetaBotCreator {
     // REGISTER PLATFORM ADMIN CALLBACKS FIRST - This is critical!
     PlatformAdminHandler.registerCallbacks(this.bot);
     
-    // NEW: Custom Command Builder pathway handlers
+    // NEW: Bot creation pathway handlers
     this.bot.action('show_creation_pathways', async (ctx) => {
       await ctx.answerCbQuery();
-      await showCreationPathwaysHandler(ctx);
+      await createBotHandler(ctx);
     });
     
     this.bot.action('pathway_info_quick', async (ctx) => {
@@ -239,30 +252,31 @@ class MetaBotCreator {
       await showPathwayInfoHandler(ctx, 'custom');
     });
     
+    this.bot.action('create_quick_bot', async (ctx) => {
+      await ctx.answerCbQuery();
+      await handleQuickBotCreation(ctx);
+    });
+    
     this.bot.action('create_custom_bot', async (ctx) => {
       await ctx.answerCbQuery();
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleCustomBotCreation(ctx);
+      await showCustomBotTemplates(ctx);
     });
     
     this.bot.action(/use_template_(.+)/, async (ctx) => {
       await ctx.answerCbQuery();
       const templateId = ctx.match[1];
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleTemplateSelection(ctx, templateId);
+      await handleTemplateSelection(ctx, templateId);
     });
     
     this.bot.action(/confirm_template_(.+)/, async (ctx) => {
       await ctx.answerCbQuery();
       const templateId = ctx.match[1];
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleTemplateConfirmation(ctx, templateId);
+      await handleTemplateConfirmation(ctx, templateId);
     });
     
     this.bot.action('create_blank_flow', async (ctx) => {
       await ctx.answerCbQuery();
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleBlankFlowCreation(ctx);
+      await handleBlankFlowCreation(ctx);
     });
     
     // Then register other specific callbacks
@@ -320,37 +334,6 @@ class MetaBotCreator {
       await ctx.answerCbQuery('⚠️ Admin removal in mini-bots');
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
-    
-    // NEW: Custom command management callbacks - PRODUCTION READY
-    this.bot.action(/manage_commands_(.+)/, async (ctx) => {
-      const botId = ctx.match[1];
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleManageCommands(ctx, botId);
-    });
-    
-    this.bot.action(/flow_builder_(.+)/, async (ctx) => {
-      const botId = ctx.match[1];
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleFlowBuilder(ctx, botId);
-    });
-    
-    // NEW: Additional command management callbacks
-    this.bot.action(/add_command_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery('➕ Adding new command...');
-      await ctx.reply('🛠️ Command creation interface is available in the command manager. Use "Manage Commands" from your bot dashboard.');
-    });
-    
-    this.bot.action(/edit_commands_(.+)/, async (ctx) => {
-      const botId = ctx.match[1];
-      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
-      await BotManagementHandler.handleManageCommands(ctx, botId);
-    });
-    
-    // REMOVED the catch-all handler that was causing platform admin buttons to redirect to start
-    // this.bot.action(/.+/, async (ctx) => {
-    //   await ctx.answerCbQuery();
-    //   await startHandler(ctx);
-    // });
     
     console.log('✅ Main bot callback handlers setup complete with Custom Command Builder support');
   }
