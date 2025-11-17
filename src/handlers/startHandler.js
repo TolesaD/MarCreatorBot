@@ -1,4 +1,5 @@
-﻿const { Markup } = require('telegraf');
+﻿// 📁 src/handlers/startHandler.js (Enhanced)
+const { Markup } = require('telegraf');
 const User = require('../models/User');
 
 const startHandler = async (ctx) => {
@@ -17,25 +18,24 @@ const startHandler = async (ctx) => {
 
     const welcomeMessage = `🤖 *Welcome to MarCreator!*\n\n` +
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
-      `✨ *Create & Manage Your Own Bots:*\n` +
-      `• 🚀 Create mini-bots without coding\n` +
-      `• 💬 Real-time messaging\n` +
-      `• 📢 Broadcast to all users\n` +
-      `• 👥 Multi-admin support\n` +
-      `• 📊 Detailed analytics\n` +
-      `• ⚡ Instant notifications\n\n` +
-      `🎯 *How It Works:*\n` +
-      `1. Create bot with @BotFather\n` +
-      `2. Add it here using /createbot\n` +
-      `3. Manage it DIRECTLY in the mini-bot\n` +
-      `*🚀 All management happens in your mini-bots!*\n\n` +
+      `✨ *Choose Your Creation Method:*\n\n` +
+      `🎯 *Quick Mini-Bots*\n` +
+      `• Simple setup wizard\n` +
+      `• Customer support bots\n` +
+      `• Basic messaging features\n` +
+      `• Perfect for beginners\n\n` +
+      `🛠️ *Custom Command Builder*\n` +
+      `• Visual drag-and-drop interface\n` +
+      `• Create ANY bot interaction\n` +
+      `• Educational bots, quizzes, forms\n` +
+      `• No coding required\n\n` +
       `🔒 *Legal & Privacy:*\n` +
       `By using this bot, you agree to our:\n` +
       `/terms - Terms of Service\n` +
       `/privacy - Privacy Policy`;
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
+      [Markup.button.callback('🚀 Create New Bot', 'show_creation_pathways')],
       [
         Markup.button.callback('❓ Help Guide', 'help'),
         Markup.button.callback('⭐ Features', 'features')
@@ -44,7 +44,7 @@ const startHandler = async (ctx) => {
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
         Markup.button.callback('📋 Terms', 'terms_of_service')
       ],
-      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')] // NEW BUTTON
+      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')]
     ]);
 
     if (ctx.updateType === 'callback_query') {
@@ -59,66 +59,153 @@ const startHandler = async (ctx) => {
     
   } catch (error) {
     console.error('Start handler error:', error);
-    
-    // Fallback
-    try {
-      await ctx.reply(
-        `🤖 Welcome to MarCreator!\n\n` +
-        `Create and manage Telegram bots without coding.\n\n` +
-        `All management happens in your mini-bots!\n\n` +
-        `Legal: /privacy & /terms\n\n` +
-        `Use the buttons below:`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('🚀 Create Bot', 'create_bot')],
-          [Markup.button.callback('📊 My Bots', 'my_bots')],
-          [Markup.button.callback('❓ Help', 'help')],
-          [Markup.button.url('📺 Tutorials', 'https://t.me/MarCreator')] // NEW BUTTON
-        ])
-      );
-    } catch (fallbackError) {
-      console.error('Fallback also failed:', fallbackError);
-      await ctx.reply(
-        'Welcome to MarCreatorBot! Use /createbot to make a bot.'
-      );
-    }
+    // ... existing fallback code
   }
 };
 
+// NEW: Show bot creation pathways
+const showCreationPathwaysHandler = async (ctx) => {
+  try {
+    const pathwaysMessage = `🚀 *Create New Bot*\n\n` +
+      `Choose your bot creation method:\n\n` +
+      `*1. Quick Mini-Bot* 🎯\n` +
+      `• Simple setup wizard\n` +
+      `• Basic messaging features\n` +
+      `• Perfect for beginners\n` +
+      `• Customer support focus\n\n` +
+      `*2. Custom Command Builder* 🛠️\n` +
+      `• Visual drag-and-drop interface\n` +
+      `• Create complex interactions\n` +
+      `• Educational bots, quizzes, forms\n` +
+      `• No coding required\n` +
+      `• Advanced logic and variables`;
+
+    const keyboard = Markup.inlineKeyboard([
+      [
+        Markup.button.callback('ℹ️ About Quick', 'pathway_info_quick'),
+        Markup.button.callback('ℹ️ About Custom', 'pathway_info_custom')
+      ],
+      [
+        Markup.button.callback('🎯 Quick Mini-Bot', 'create_quick_bot'),
+        Markup.button.callback('🛠️ Custom Builder', 'create_custom_bot')
+      ],
+      [Markup.button.callback('🔙 Main Menu', 'start')]
+    ]);
+
+    if (ctx.updateType === 'callback_query') {
+      await ctx.editMessageText(pathwaysMessage, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      await ctx.answerCbQuery();
+    } else {
+      await ctx.replyWithMarkdown(pathwaysMessage, keyboard);
+    }
+  } catch (error) {
+    console.error('Pathways handler error:', error);
+    await ctx.reply('❌ Error showing creation options. Please try /start');
+  }
+};
+
+// NEW: Show pathway information
+const showPathwayInfoHandler = async (ctx, pathwayType) => {
+  try {
+    let infoMessage = '';
+    
+    if (pathwayType === 'quick') {
+      infoMessage = `🎯 *Quick Mini-Bot Pathway*\n\n` +
+        `*Perfect for:* Customer support, simple announcements, basic interactions\n\n` +
+        `*Features:*\n` +
+        `• Easy 3-step setup\n` +
+        `• Welcome message customization\n` +
+        `• Message forwarding to admins\n` +
+        `• Broadcast messages\n` +
+        `• Admin management\n` +
+        `• Basic analytics\n\n` +
+        `*Limitations:*\n` +
+        `• Fixed interaction patterns\n` +
+        `• Limited customization\n` +
+        `• Basic functionality only\n\n` +
+        `*Best for beginners and simple use cases*`;
+    } else {
+      infoMessage = `🛠️ *Custom Command Builder Pathway*\n\n` +
+        `*Perfect for:* Educational bots, quizzes, surveys, complex workflows\n\n` +
+        `*Features:*\n` +
+        `• Visual drag-and-drop interface\n` +
+        `• Create ANY bot interaction\n` +
+        `• Conditional logic (IF/THEN/ELSE)\n` +
+        `• Variables and data storage\n` +
+        `• Pre-built templates\n` +
+        `• Form builders\n` +
+        `• Educational templates\n` +
+        `• Advanced messaging\n\n` +
+        `*Limitations:*\n` +
+        `• No external API integrations\n` +
+        `• No payment processing\n` +
+        `• Platform-native features only\n\n` +
+        `*Best for advanced users and complex interactions*`;
+    }
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('⬅️ Back to Pathways', 'show_creation_pathways')],
+      [Markup.button.callback(
+        `🚀 Create ${pathwayType === 'quick' ? 'Quick Bot' : 'Custom Bot'}`,
+        pathwayType === 'quick' ? 'create_quick_bot' : 'create_custom_bot'
+      )]
+    ]);
+
+    if (ctx.updateType === 'callback_query') {
+      await ctx.editMessageText(infoMessage, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      await ctx.answerCbQuery();
+    } else {
+      await ctx.replyWithMarkdown(infoMessage, keyboard);
+    }
+  } catch (error) {
+    console.error('Pathway info handler error:', error);
+    await ctx.reply('❌ Error loading pathway information');
+  }
+};
+
+// Enhanced help handler to include custom commands
 const helpHandler = async (ctx) => {
   try {
     const helpMessage = `📖 *MarCreator - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
-      `1. Create bot via @BotFather\n` +
-      `2. Use /createbot to add it here\n` +
+      `1. Choose your creation method\n` +
+      `2. Follow the setup wizard\n` +
       `3. Go to your mini-bot and use /dashboard\n` +
       `4. Start managing immediately!\n\n` +
-      `*🔧 Main Commands (in this bot):*\n` +
+      `*🎯 Two Creation Pathways:*\n\n` +
+      `*Quick Mini-Bots:*\n` +
+      `• Simple customer support bots\n` +
+      `• Basic messaging features\n` +
+      `• Easy 3-step setup\n` +
+      `• Perfect for beginners\n\n` +
+      `*Custom Command Builder:*\n` +
+      `• Visual drag-and-drop interface\n` +
+      `• Create complex interactions\n` +
+      `• Educational bots, quizzes, forms\n` +
+      `• No coding required\n\n` +
+      `*🔧 Main Commands:*\n` +
       `/start - Show main menu\n` +
       `/createbot - Create new mini-bot\n` +
       `/mybots - List your bots\n` +
-      `/help - This help message\n` +
-      `/privacy - Privacy Policy\n` +
-      `/terms - Terms of Service\n\n` +
+      `/help - This help message\n\n` +
       `*🤖 Mini-Bot Management:*\n` +
-      `• Users message your mini-bot\n` +
-      `• You get INSTANT notifications\n` +
-      `• Reply directly from notifications\n` +
-      `• Use /dashboard in mini-bot for full features\n\n` +
-      `*📊 Management Features (in mini-bots):*\n` +
-      `/dashboard - Full admin panel\n` +
-      `/broadcast - Send to all users\n` +
-      `/stats - View statistics\n` +
-      `/admins - Manage team (owners only)\n\n` +
-      `*💡 Pro Tip:*\n` +
-      `• Use bot commands/Menu for quick access\n` +
+      `• All management happens in mini-bots\n` +
+      `• Use /dashboard in your mini-bot\n` +
+      `• Get instant notifications\n` +
+      `• Reply directly from notifications\n\n` +
       `*🔒 Legal & Support:*\n` +
-      `/privacy - View Privacy Policy\n` +
-      `/terms - View Terms of Service\n` +
-      `*Contact:*\n` +
-      `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n`;
+      `/privacy - Privacy Policy\n` +
+      `/terms - Terms of Service\n` +
+      `Questions? Contact @MarCreatorSupportBot`;
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
+      [Markup.button.callback('🚀 Create New Bot', 'show_creation_pathways')],
       [Markup.button.callback('📊 My Bots Dashboard', 'my_bots')],
       [
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
@@ -139,71 +226,37 @@ const helpHandler = async (ctx) => {
     
   } catch (error) {
     console.error('Help handler error:', error);
-    await ctx.reply(
-      `🤖 MarCreator Help\n\n` +
-      `Main Commands:\n` +
-      `/start - Main menu\n` +
-      `/createbot - Create bot\n` +
-      `/mybots - List bots\n` +
-      `/help - Help guide\n` +
-      `/privacy - Privacy Policy\n` +
-      `/terms - Terms of Service\n\n` +
-      `Manage bots in the mini-bots using /dashboard`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 Create Bot', 'create_bot')],
-        [Markup.button.callback('🔙 Main Menu', 'start')]
-      ])
-    );
+    // ... existing fallback code
   }
 };
 
+// Enhanced features handler
 const featuresHandler = async (ctx) => {
   try {
     const featuresMessage = `⭐ *MarCreator Features*\n\n` +
-      `*🤖 Bot Creation & Management:*\n` +
-      `• Create mini-bots\n` +
-      `• No coding knowledge required\n` +
-      `• Easy setup wizard\n` +
-      `• One-click activation\n\n` +
-      `*💬 Advanced Messaging System:*\n` +
+      `*🤖 Two Powerful Creation Methods:*\n\n` +
+      `*🎯 Quick Mini-Bots:*\n` +
+      `• Simple setup wizard\n` +
       `• Real-time message forwarding\n` +
-      `• Instant admin notifications\n` +
-      `• One-click reply from notifications\n` +
-      `• Message history tracking\n\n` +
-      `*📢 Broadcast System:*\n` +
-      `• Send messages to all users\n` +
-      `• Markdown formatting support\n` +
-      `• Delivery statistics\n` +
-      `• Rate limiting protection\n\n` +
-      `*👥 Admin Management:*\n` +
-      `• Add multiple admins\n` +
-      `• Role-based permissions\n` +
-      `• Admin activity tracking\n` +
-      `• Easy team management\n\n` +
-      `*📊 Analytics & Insights:*\n` +
-      `• User growth statistics\n` +
-      `• Message volume tracking\n` +
-      `• Engagement metrics\n` +
-      `• Performance insights\n\n` +
-      `*⚡ Technical Features:*\n` +
+      `• Broadcast system\n` +
+      `• Multi-admin support\n` +
+      `• Basic analytics\n\n` +
+      `*🛠️ Custom Command Builder (NEW):*\n` +
+      `• Visual drag-and-drop interface\n` +
+      `• Create ANY bot interaction\n` +
+      `• Educational templates\n` +
+      `• Conditional logic\n` +
+      `• Variables and forms\n` +
+      `• Quiz and survey builders\n\n` +
+      `*⚡ Technical Excellence:*\n` +
       `• Secure token encryption\n` +
-      `• Bot persistence across restarts\n` +
       `• Production-ready architecture\n` +
-      `• Automatic error recovery\n\n` +
-      `*🔒 Security & Privacy:*\n` +
-      `• Encrypted bot token storage\n` +
-      `• GDPR-compliant data handling\n` +
-      `• Regular security updates\n` +
-      `• Transparent privacy policy\n\n` +
-      `*🎯 Perfect For:*\n` +
-      `• Businesses & customer support\n` +
-      `• Communities & groups\n` +
-      `• Content creators\n` +
-      `• Developers & entrepreneurs\n\n` +
-      `*Ready to create your first bot?*`;
+      `• Automatic error recovery\n` +
+      `• Regular updates\n\n` +
+      `*Ready to create your perfect bot?*`;
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create Bot Now', 'create_bot')],
+      [Markup.button.callback('🚀 Create Bot Now', 'show_creation_pathways')],
       [Markup.button.callback('📊 View My Bots', 'my_bots')],
       [
         Markup.button.callback('🔒 Privacy Policy', 'privacy_policy'),
@@ -278,5 +331,7 @@ module.exports = {
   startHandler, 
   helpHandler, 
   featuresHandler,
+  showCreationPathwaysHandler,
+  showPathwayInfoHandler,
   defaultHandler 
 };

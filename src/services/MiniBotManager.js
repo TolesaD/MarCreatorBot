@@ -353,8 +353,45 @@ class MiniBotManager {
       console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
     });
     
-    console.log('✅ Bot handlers setup complete with image/video/audio support');
-  };
+// Add custom command handler
+  bot.on('text', (ctx) => this.handleCustomCommands(ctx));
+  bot.on('callback_query', (ctx) => this.handleCustomCommandCallbacks(ctx));
+
+  console.log('✅ Bot handlers setup complete with custom command support');
+};
+
+handleCustomCommands = async (ctx) => {
+  try {
+    const { metaBotInfo } = ctx;
+    const user = ctx.from;
+    const message = ctx.message.text;
+
+    // Check if message matches any custom command trigger
+    const customCommandEngine = new CustomCommandEngine(this);
+    const result = await customCommandEngine.executeCommand(
+      metaBotInfo.mainBotId, 
+      user.id, 
+      message
+    );
+
+    if (result) {
+      // Custom command was executed, don't process as regular message
+      return;
+    }
+
+    // Continue with regular message processing
+    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+    if (isAdmin) {
+      await this.showAdminDashboard(ctx, metaBotInfo);
+      return;
+    }
+
+    await this.handleUserMessage(ctx, metaBotInfo, user, message);
+    
+  } catch (error) {
+    console.error('Custom command handler error:', error);
+  }
+};
 
   // FIXED: Admin media now properly forwards to all users
   handleImageMessage = async (ctx) => {

@@ -1,4 +1,5 @@
-﻿const { DataTypes } = require('sequelize');
+﻿// 📁 src/models/Bot.js - PRODUCTION READY
+const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../database/db');
 const { encrypt, decrypt, isEncryptionWorking } = require('../utils/encryption');
 
@@ -36,6 +37,17 @@ const Bot = sequelize.define('Bot', {
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
+  },
+  // NEW: Bot type for distinguishing between quick and custom bots
+  bot_type: {
+    type: DataTypes.ENUM('quick', 'custom'),
+    defaultValue: 'quick',
+    allowNull: false
+  },
+  // NEW: Custom bot specific fields
+  custom_flow_data: {
+    type: DataTypes.JSON,
+    allowNull: true
   },
   created_at: {
     type: DataTypes.DATE,
@@ -212,6 +224,33 @@ Bot.prototype.testTokenDecryption = function() {
   }
 };
 
+// NEW: Method to check if bot supports custom commands
+Bot.prototype.supportsCustomCommands = function() {
+  return this.bot_type === 'custom' || this.custom_flow_data !== null;
+};
+
+// NEW: Method to get bot type display name
+Bot.prototype.getBotTypeDisplay = function() {
+  const types = {
+    'quick': '🎯 Quick Mini-Bot',
+    'custom': '🛠️ Custom Command Bot'
+  };
+  return types[this.bot_type] || '🎯 Quick Mini-Bot';
+};
+
+// NEW: Method to update custom flow data
+Bot.prototype.updateCustomFlow = async function(flowData) {
+  try {
+    this.custom_flow_data = flowData;
+    this.bot_type = 'custom'; // Ensure bot type is set to custom
+    await this.save();
+    return { success: true, message: 'Custom flow updated successfully' };
+  } catch (error) {
+    console.error('Error updating custom flow:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Static method to find by bot_id
 Bot.findByBotId = async function(botId) {
   try {
@@ -247,6 +286,22 @@ Bot.findAllActive = async function() {
     });
   } catch (error) {
     console.error('Error finding all active bots:', error);
+    return [];
+  }
+};
+
+// NEW: Static method to get custom bots by owner
+Bot.findCustomBotsByOwner = async function(ownerId) {
+  try {
+    return await this.findAll({ 
+      where: { 
+        owner_id: ownerId,
+        bot_type: 'custom'
+      },
+      order: [['created_at', 'DESC']]
+    });
+  } catch (error) {
+    console.error(`Error finding custom bots for owner ${ownerId}:`, error);
     return [];
   }
 };
@@ -356,8 +411,11 @@ Bot.prototype.toSafeFormat = function() {
     bot_id: this.bot_id,
     bot_name: this.bot_name,
     bot_username: this.bot_username,
+    bot_type: this.bot_type,
+    bot_type_display: this.getBotTypeDisplay(),
     welcome_message: this.welcome_message,
     is_active: this.is_active,
+    supports_custom_commands: this.supportsCustomCommands(),
     created_at: this.created_at,
     updated_at: this.updated_at
   };
@@ -387,10 +445,11 @@ Bot.diagnoseEncryption = async function() {
     results.push({
       bot_name: bot.bot_name,
       bot_id: bot.bot_id,
+      bot_type: bot.bot_type,
       token_test: tokenTest
     });
     
-    console.log(`   ${bot.bot_name}: ${tokenTest.success ? '✅' : '❌'} ${tokenTest.message}`);
+    console.log(`   ${bot.bot_name} (${bot.bot_type}): ${tokenTest.success ? '✅' : '❌'} ${tokenTest.message}`);
   }
   
   return {
