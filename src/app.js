@@ -1,4 +1,4 @@
-﻿// 📁 src/app.js - ENHANCED WITH CUSTOM COMMAND BUILDER SUPPORT
+﻿// 📁 src/app.js - PRODUCTION READY WITH CUSTOM COMMAND BUILDER
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -255,15 +255,14 @@ class MetaBotCreator {
     this.bot.action(/confirm_template_(.+)/, async (ctx) => {
       await ctx.answerCbQuery();
       const templateId = ctx.match[1];
-      // This will start the bot creation flow with the selected template
-      await ctx.reply(`🛠️ Starting bot creation with template: ${templateId}\n\nThis feature is coming soon in Phase 2!`);
-      // Implementation will be added in the next phase
+      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
+      await BotManagementHandler.handleTemplateConfirmation(ctx, templateId);
     });
     
     this.bot.action('create_blank_flow', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.reply(`🛠️ Starting blank flow creation...\n\nThis feature is coming soon in Phase 2!`);
-      // Implementation will be added in the next phase
+      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
+      await BotManagementHandler.handleBlankFlowCreation(ctx);
     });
     
     // Then register other specific callbacks
@@ -322,17 +321,29 @@ class MetaBotCreator {
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
     
-    // NEW: Custom command management callbacks
+    // NEW: Custom command management callbacks - PRODUCTION READY
     this.bot.action(/manage_commands_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
       const botId = ctx.match[1];
-      await ctx.reply(`🛠️ Managing custom commands for bot ${botId}\n\nThis feature is coming soon in Phase 2!`);
+      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
+      await BotManagementHandler.handleManageCommands(ctx, botId);
     });
     
     this.bot.action(/flow_builder_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
       const botId = ctx.match[1];
-      await ctx.reply(`📝 Opening flow builder for bot ${botId}\n\nThis feature is coming soon in Phase 2!`);
+      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
+      await BotManagementHandler.handleFlowBuilder(ctx, botId);
+    });
+    
+    // NEW: Additional command management callbacks
+    this.bot.action(/add_command_(.+)/, async (ctx) => {
+      await ctx.answerCbQuery('➕ Adding new command...');
+      await ctx.reply('🛠️ Command creation interface is available in the command manager. Use "Manage Commands" from your bot dashboard.');
+    });
+    
+    this.bot.action(/edit_commands_(.+)/, async (ctx) => {
+      const botId = ctx.match[1];
+      const BotManagementHandler = require('./handlers/botManagementHandler').BotManagementHandler;
+      await BotManagementHandler.handleManageCommands(ctx, botId);
     });
     
     // REMOVED the catch-all handler that was causing platform admin buttons to redirect to start
@@ -600,7 +611,7 @@ async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
     console.log('🚀 Optimized for Yegara.com cPanel deployment');
-    console.log('🛠️ Custom Command Builder: ENABLED');
+    console.log('🛠️ Custom Command Builder: PRODUCTION READY');
     
     const app = new MetaBotCreator();
     await app.initialize();
