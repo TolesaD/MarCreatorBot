@@ -230,54 +230,54 @@ class MetaBotCreator {
     console.log('✅ Main bot handlers setup complete');
   }
   
-  setupCallbackHandlers() {
-    console.log('🔄 Setting up main bot callback handlers...');
-    
-    // REGISTER PLATFORM ADMIN CALLBACKS FIRST - This is critical!
-    PlatformAdminHandler.registerCallbacks(this.bot);
-    
-    // NEW: Bot creation pathway handlers
-    this.bot.action('show_creation_pathways', async (ctx) => {
-      await ctx.answerCbQuery();
-      await createBotHandler(ctx);
-    });
-    
-    this.bot.action('pathway_info_quick', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showPathwayInfoHandler(ctx, 'quick');
-    });
-    
-    this.bot.action('pathway_info_custom', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showPathwayInfoHandler(ctx, 'custom');
-    });
-    
-    this.bot.action('create_quick_bot', async (ctx) => {
-      await ctx.answerCbQuery();
-      await handleQuickBotCreation(ctx);
-    });
-    
-    this.bot.action('create_custom_bot', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showCustomBotTemplates(ctx);
-    });
-    
-    this.bot.action(/use_template_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
-      const templateId = ctx.match[1];
-      await handleTemplateSelection(ctx, templateId);
-    });
-    
-    this.bot.action(/confirm_template_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
-      const templateId = ctx.match[1];
-      await handleTemplateConfirmation(ctx, templateId);
-    });
-    
-    this.bot.action('create_blank_flow', async (ctx) => {
-      await ctx.answerCbQuery();
-      await handleBlankFlowCreation(ctx);
-    });
+setupCallbackHandlers() {
+  console.log('🔄 Setting up main bot callback handlers...');
+  
+  // REGISTER PLATFORM ADMIN CALLBACKS FIRST - This is critical!
+  PlatformAdminHandler.registerCallbacks(this.bot);
+  
+  // NEW: Bot creation pathway handlers
+  this.bot.action('show_creation_pathways', async (ctx) => {
+    await ctx.answerCbQuery();
+    await createBotHandler(ctx);
+  });
+  
+  this.bot.action('pathway_info_quick', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showPathwayInfoHandler(ctx, 'quick');
+  });
+  
+  this.bot.action('pathway_info_custom', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showPathwayInfoHandler(ctx, 'custom');
+  });
+  
+  this.bot.action('create_quick_bot', async (ctx) => {
+    await ctx.answerCbQuery();
+    await handleQuickBotCreation(ctx);
+  });
+  
+  this.bot.action('create_custom_bot', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showCustomBotTemplates(ctx);
+  });
+  
+  this.bot.action(/use_template_(.+)/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const templateId = ctx.match[1];
+    await handleTemplateSelection(ctx, templateId);
+  });
+  
+  this.bot.action(/confirm_template_(.+)/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const templateId = ctx.match[1];
+    await handleTemplateConfirmation(ctx, templateId);
+  });
+  
+  this.bot.action('create_blank_flow', async (ctx) => {
+    await ctx.answerCbQuery();
+    await handleBlankFlowCreation(ctx);
+  });
     
     // Then register other specific callbacks
     this.bot.action('start', async (ctx) => {

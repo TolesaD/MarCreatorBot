@@ -265,6 +265,16 @@ const handleTokenInput = async (ctx) => {
   }
 };
 
+// Right before creating the bot, add this:
+console.log('🔍 DEBUG: Creating bot with type:', session.data.bot_type);
+console.log('🔍 DEBUG: Full session data:', JSON.stringify(session, null, 2));
+
+// Create bot record (token will be encrypted by model hook)
+const bot = await Bot.create(botData);
+
+// Add this after creation to verify:
+console.log('🔍 DEBUG: Bot created with type:', bot.bot_type);
+
 const handleNameInput = async (ctx) => {
   const userId = ctx.from.id;
   const session = botCreationSessions.get(userId);
