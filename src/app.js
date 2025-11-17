@@ -40,7 +40,7 @@ const {
   handleBlankFlowCreation
 } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
-const PlatformAdminHandler = require('./handlers/platformAdminHandler');
+//const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 
 class MetaBotCreator {
   constructor() {
