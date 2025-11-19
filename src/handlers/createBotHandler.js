@@ -141,16 +141,19 @@ const handleTokenInput = async (ctx) => {
     session.data.bot_id = validation.botInfo.id;
     session.step = 'awaiting_name';
     
-    await ctx.reply(
-      `✅ *Token verified successfully!*\n\n` +
-      `🤖 *Bot Found:*\n` +
-      `• *Name:* ${validation.botInfo.first_name}\n` +
-      `• *Username:* @${validation.botInfo.username}\n` +
-      `• *ID:* ${validation.botInfo.id}\n\n` +
-      `*Step 2/2:* Please enter a display name for your bot:\n\n` +
-      `This name will be used in your management dashboard.`,
-      { parse_mode: 'Markdown' }
-    );
+    // FIXED: Using HTML formatting to avoid Markdown parsing errors
+    const message = 
+      '✅ <b>Token verified successfully!</b>\n\n' +
+      '🤖 <b>Bot Found:</b>\n' +
+      '• <b>Name:</b> ' + validation.botInfo.first_name + '\n' +
+      '• <b>Username:</b> <code>@' + validation.botInfo.username + '</code>\n' +
+      '• <b>ID:</b> <code>' + validation.botInfo.id + '</code>\n\n' +
+      '<b>Step 2/2:</b> Please enter a display name for your bot:\n\n' +
+      'This name will be used in your management dashboard.';
+
+    await ctx.reply(message, { 
+      parse_mode: 'HTML' 
+    });
     
   } catch (error) {
     console.error('Token verification error:', error);
@@ -244,16 +247,18 @@ const handleNameInput = async (ctx) => {
     // Cleanup session FIRST before sending messages
     botCreationSessions.delete(userId);
     
-    const successMessage = `🎉 *Bot Created Successfully!*\n\n` +
-      `*Bot Name:* ${botName}\n` +
-      `*Bot Username:* @${session.data.bot_username}\n` +
-      `*Bot ID:* \`${botId}\`\n\n` +
-      `✅ Your bot is now active! Users can start chatting with @${session.data.bot_username}\n\n` +
-      `*You can now manage your bot directly in your mini-bot using:*\n` +
-      `• /dashboard - Admin panel\n` +
-      `• /broadcast - Send broadcasts\n` +
-      `• /stats - View statistics\n` +
-      `• /admins - Manage admins (owner only)`;
+    // FIXED: Using HTML formatting for success message too
+    const successMessage = 
+      '🎉 <b>Bot Created Successfully!</b>\n\n' +
+      '<b>Bot Name:</b> ' + botName + '\n' +
+      '<b>Bot Username:</b> @' + session.data.bot_username + '\n' +
+      '<b>Bot ID:</b> <code>' + botId + '</code>\n\n' +
+      '✅ Your bot is now active! Users can start chatting with @' + session.data.bot_username + '\n\n' +
+      '<b>You can now manage your bot directly in your mini-bot using:</b>\n' +
+      '• /dashboard - Admin panel\n' +
+      '• /broadcast - Send broadcasts\n' +
+      '• /stats - View statistics\n' +
+      '• /admins - Manage admins (owner only)';
     
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.url('🔗 Open Your Mini-Bot', `https://t.me/${session.data.bot_username}`)],
@@ -261,7 +266,10 @@ const handleNameInput = async (ctx) => {
       [Markup.button.callback('🚀 Create Another Bot', 'create_bot')],
     ]);
 
-    await ctx.replyWithMarkdown(successMessage, keyboard);
+    await ctx.reply(successMessage, { 
+      parse_mode: 'HTML',
+      ...keyboard 
+    });
     
     // Initialize the mini-bot AFTER cleaning session
     try {
