@@ -86,6 +86,8 @@ const startHandler = async (ctx) => {
 
 const helpHandler = async (ctx) => {
   try {
+    const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || 'MarCreatorSupportBot';
+    
     const helpMessage = `📖 *MarCreator - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
       `1. Create bot via @BotFather\n` +
@@ -110,21 +112,24 @@ const helpHandler = async (ctx) => {
       `/stats - View statistics\n` +
       `/admins - Manage team (owners only)\n\n` +
       `*💡 Pro Tip:*\n` +
-      `• Use bot commands/Menu for quick access\n` +
+      `• Use bot commands/Menu for quick access\n\n` +
       `*🔒 Legal & Support:*\n` +
       `/privacy - View Privacy Policy\n` +
-      `/terms - View Terms of Service\n` +
+      `/terms - View Terms of Service\n\n` +
       `*Contact:*\n` +
-      `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n`;
+      `Questions? Contact @${SUPPORT_USERNAME}`;
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
       [Markup.button.callback('📊 My Bots Dashboard', 'my_bots')],
       [
-        Markup.button.callback('🔒 Privacy', 'privacy_policy'),
-        Markup.button.callback('📋 Terms', 'terms_of_service')
+        Markup.button.callback('⭐ Features', 'features'),
+        Markup.button.callback('🔒 Privacy', 'privacy_policy')
       ],
-      [Markup.button.callback('🔙 Main Menu', 'start')]
+      [
+        Markup.button.callback('📋 Terms', 'terms_of_service'),
+        Markup.button.callback('🔙 Main Menu', 'start')
+      ]
     ]);
 
     if (ctx.updateType === 'callback_query') {
@@ -139,18 +144,34 @@ const helpHandler = async (ctx) => {
     
   } catch (error) {
     console.error('Help handler error:', error);
-    await ctx.reply(
-      `🤖 MarCreator Help\n\n` +
-      `Main Commands:\n` +
-      `/start - Main menu\n` +
-      `/createbot - Create bot\n` +
-      `/mybots - List bots\n` +
-      `/help - Help guide\n` +
+    
+    // Enhanced fallback with the same comprehensive message
+    const fallbackMessage = `📖 MarCreator - Complete Help Guide\n\n` +
+      `🚀 Getting Started:\n` +
+      `1. Create bot via @BotFather\n` +
+      `2. Use /createbot to add it here\n` +
+      `3. Go to your mini-bot and use /dashboard\n` +
+      `4. Start managing immediately!\n\n` +
+      `🔧 Main Commands (in this bot):\n` +
+      `/start - Show main menu\n` +
+      `/createbot - Create new mini-bot\n` +
+      `/mybots - List your bots\n` +
+      `/help - This help message\n` +
       `/privacy - Privacy Policy\n` +
       `/terms - Terms of Service\n\n` +
-      `Manage bots in the mini-bots using /dashboard`,
+      `🤖 Mini-Bot Management:\n` +
+      `• Users message your mini-bot\n` +
+      `• You get INSTANT notifications\n` +
+      `• Reply directly from notifications\n` +
+      `• Use /dashboard in mini-bot for full features\n\n` +
+      `Manage bots in the mini-bots using /dashboard`;
+
+    await ctx.reply(
+      fallbackMessage,
       Markup.inlineKeyboard([
         [Markup.button.callback('🚀 Create Bot', 'create_bot')],
+        [Markup.button.callback('📊 My Bots', 'my_bots')],
+        [Markup.button.callback('⭐ Features', 'features')],
         [Markup.button.callback('🔙 Main Menu', 'start')]
       ])
     );
