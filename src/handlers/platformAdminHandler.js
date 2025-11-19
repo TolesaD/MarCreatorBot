@@ -1024,7 +1024,7 @@ class PlatformAdminHandler {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
-        );
+      });
       }
 
     } catch (error) {
@@ -1078,7 +1078,7 @@ class PlatformAdminHandler {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
-        );
+      });
       }
 
     } catch (error) {
