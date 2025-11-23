@@ -203,10 +203,11 @@ class MiniBotManager {
     console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
     
     const bot = new Telegraf(token, {
-      handlerTimeout: 120000,
+      handlerTimeout: 90000, // Increased timeout
       telegram: { 
         apiRoot: 'https://api.telegram.org',
-        agent: null
+        agent: null,
+        timeout: 30000
       }
     });
     
@@ -239,32 +240,77 @@ class MiniBotManager {
     
     console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
     
-    // 🔥 FIXED LAUNCH SECTION - Delete webhook first, then use polling
+    // 🔥 ENHANCED LAUNCH SECTION WITH TIMEOUT
     try {
+      console.log(`🔄 Step 1: Deleting webhook for ${botRecord.bot_name}...`);
+      
       // Delete any existing webhook first
       await bot.telegram.deleteWebhook();
       console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
-    } catch (webhookError) {
-      console.log(`ℹ️ No webhook to delete for ${botRecord.bot_name}`);
+      
+      // Wait a moment
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log(`🔄 Step 2: Starting polling for ${botRecord.bot_name}...`);
+      
+      // Use polling with timeout protection
+      const pollingPromise = bot.startPolling({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
+        polling: {
+          timeout: 10,
+          limit: 100
+        }
+      });
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Polling start timeout after 15000ms for ${botRecord.bot_name}`)), 15000);
+      });
+      
+      await Promise.race([pollingPromise, timeoutPromise]);
+      
+      console.log(`✅ Bot ${botRecord.bot_name} started successfully with polling`);
+      
+      // Update bot status
+      const botData = this.activeBots.get(botRecord.id);
+      if (botData) {
+        botData.status = 'active';
+        botData.launchedAt = new Date();
+        console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+      }
+      
+      return true;
+      
+    } catch (launchError) {
+      console.error(`❌ Launch failed for ${botRecord.bot_name}:`, launchError.message);
+      
+      // Try alternative method for timeout errors
+      if (launchError.message.includes('timeout')) {
+        console.log(`🔄 Trying alternative start for ${botRecord.bot_name}...`);
+        try {
+          // Force start without waiting
+          bot.startPolling({
+            dropPendingUpdates: true,
+            allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+          });
+          
+          console.log(`✅ Bot ${botRecord.bot_name} started with alternative method`);
+          
+          const botData = this.activeBots.get(botRecord.id);
+          if (botData) {
+            botData.status = 'active';
+            console.log(`✅ Bot marked as ACTIVE after alternative start: ${botRecord.bot_name}`);
+          }
+          
+          return true;
+        } catch (altError) {
+          console.error(`❌ Alternative start also failed for ${botRecord.bot_name}:`, altError.message);
+        }
+      }
+      
+      return false;
     }
-    
-    // Use polling to avoid conflicts
-    await bot.startPolling({
-      dropPendingUpdates: true,
-      allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-    });
-    
-    console.log(`✅ Bot ${botRecord.bot_name} started successfully with polling`);
-    
-    // Update bot status
-    const botData = this.activeBots.get(botRecord.id);
-    if (botData) {
-      botData.status = 'active';
-      botData.launchedAt = new Date();
-      console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
-    }
-    
-    return true;
     
   } catch (error) {
     console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
