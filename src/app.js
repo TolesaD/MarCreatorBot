@@ -13,8 +13,8 @@ if (isCpanel) {
 }
 
 const { Telegraf, Markup } = require('telegraf');
-const config = require('./config/environment');
-const { connectDB } = require('./database/db');
+const config = require('../config/environment');
+const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
