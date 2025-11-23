@@ -456,68 +456,92 @@ class MetaBotCreator {
     }
   }
   
-  async startMiniBotsAutomatically() {
-    console.log('\n🚀 AUTOMATIC: Starting mini-bots initialization...');
-    console.log('============================================');
-    
-    try {
-      // Wait for main bot to be fully ready
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const result = await MiniBotManager.initializeAllBots();
-      
-      if (result > 0) {
-        console.log(`✅ AUTOMATIC: ${result} mini-bots started successfully`);
-      } else {
-        console.log('ℹ️ AUTOMATIC: No active mini-bots found to start');
-      }
-      
-      console.log('============================================\n');
-      return result;
-    } catch (error) {
-      console.error('❌ AUTOMATIC: Mini-bot initialization failed:', error.message);
-      return 0;
-    }
-  }
+async startMiniBotsAutomatically() {
+  console.log('\n🚀 AUTOMATIC: Starting mini-bots initialization...');
+  console.log('============================================');
   
-  start() {
-    console.log('🚀 Starting main bot FIRST...');
+  try {
+    // Wait for main bot to be fully ready
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // CRITICAL: Start mini-bots BEFORE main bot to ensure they run
-    console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
-    this.startMiniBotsAutomatically().then(result => {
-      if (result > 0) {
-        console.log(`✅ ${result} mini-bots started BEFORE main bot`);
-      }
-    });
+    const result = await MiniBotManager.initializeAllBots();
+    
+    if (result > 0) {
+      console.log(`✅ AUTOMATIC: ${result} mini-bots started successfully`);
+    } else {
+      console.log('ℹ️ AUTOMATIC: No active mini-bots found to start');
+    }
+    
+    console.log('============================================\n');
+    return result;
+  } catch (error) {
+    console.error('❌ AUTOMATIC: Mini-bot initialization failed:', error.message);
+    throw error; // Re-throw to handle in the main startup
+  }
+}
+  
+start() {
+  console.log('🚀 Starting bot initialization sequence...');
+  
+  // FIRST: Start mini-bots and wait for them to complete
+  console.log('🔄 STEP 1: Starting mini-bots initialization...');
+  this.startMiniBotsAutomatically().then(result => {
+    console.log(`✅ STEP 1 COMPLETE: ${result} mini-bots initialized`);
+    
+    // SECOND: Wait an additional 10 seconds after mini-bots are done
+    console.log('⏳ Waiting 10 seconds before starting main bot...');
+    setTimeout(() => {
+      console.log('🚀 STEP 2: Starting main bot...');
+      
+      // Start main bot with polling
+      this.bot.launch({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query']
+      })
+        .then(() => {
+          console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
+          console.log('========================================');
+          console.log('📱 Main Bot: Manages bot creation');
+          console.log('🤖 Mini-bots: Handle user messages');
+          console.log('💬 Send /start to see main menu');
+          console.log('🔧 Use /createbot to create new bots');
+          console.log('📋 Use /mybots to view your bots');
+          console.log('👑 Use /platform for admin dashboard');
+          console.log('🔄 Use /reinit to restart mini-bots');
+          console.log('🔒 Legal: /privacy & /terms available');
+          console.log('========================================');
+        })
+        .catch(error => {
+          console.error('❌ Failed to start main bot:', error.message);
+          // Don't exit - just log the error
+        });
+    }, 10000); // 10 second delay after mini-bots complete
+  }).catch(error => {
+    console.error('❌ Mini-bot initialization failed:', error);
+    // Still try to start main bot even if mini-bots fail
+    this.startMainBotWithDelay();
+  });
+  
+  process.once('SIGINT', () => this.shutdown());
+  process.once('SIGTERM', () => this.shutdown());
+}
 
-    // Start main bot
+// Add this helper method
+startMainBotWithDelay() {
+  console.log('⏳ Starting main bot with 15 second delay...');
+  setTimeout(() => {
     this.bot.launch({
       dropPendingUpdates: true,
       allowedUpdates: ['message', 'callback_query']
     })
       .then(() => {
-        console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-        console.log('========================================');
-        console.log('📱 Main Bot: Manages bot creation');
-        console.log('🤖 Mini-bots: Handle user messages');
-        console.log('💬 Send /start to see main menu');
-        console.log('🔧 Use /createbot to create new bots');
-        console.log('📋 Use /mybots to view your bots');
-        console.log('👑 Use /platform for admin dashboard');
-        console.log('🔄 Use /reinit to restart mini-bots');
-        console.log('🔒 Legal: /privacy & /terms available');
-        console.log('========================================');
-        
+        console.log('🎉 Main bot started (mini-bots may be unavailable)');
       })
       .catch(error => {
-        console.error('❌ Failed to start main bot:', error.message);
-        process.exit(1);
+        console.error('❌ Main bot failed to start:', error.message);
       });
-    
-    process.once('SIGINT', () => this.shutdown());
-    process.once('SIGTERM', () => this.shutdown());
-  }
+  }, 15000);
+}
   
   async shutdown() {
     console.log('\n🛑 Shutting down gracefully...');
