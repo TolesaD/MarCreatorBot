@@ -496,6 +496,35 @@ class MetaBotCreator {
         console.log(`✅ ${result} mini-bots started BEFORE main bot`);
       }
     });
+
+    const express = require('express');
+const app = express();
+
+// Add this after your other middleware but BEFORE bot startup
+app.use(express.json());
+
+// Webhook endpoint for mini-bots
+app.post('/webhook/mini/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`📨 Webhook received for mini-bot ID: ${botId}`);
+    
+    await miniBotManager.handleMiniBotWebhook({ request: req, response: res }, null, botId);
+    
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    res.status(500).send('Error processing webhook');
+  }
+});
+
+// Health check for webhooks
+app.get('/webhook/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    miniBots: miniBotManager.activeBots.size,
+    environment: process.env.NODE_ENV || 'production'
+  });
+});
     
     // Start main bot
     this.bot.launch({
@@ -570,5 +599,14 @@ async function startApplication() {
 if (require.main === module) {
   startApplication();
 }
+
+// In your app.js, after all setup
+const PORT = process.env.PORT || 3000;
+
+// Start Express server for webhooks
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Webhook endpoints available at: https://testweb.maroset.com/webhook/`);
+});
 
 module.exports = MetaBotCreator;

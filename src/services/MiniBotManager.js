@@ -74,6 +74,89 @@ class MiniBotManager {
     this.initializationPromise = null;
     return result;
   }
+
+  // Webhook-based bot initialization
+async initializeBotWithWebhook(botRecord) {
+  try {
+    console.log(`🌐 Starting ${botRecord.bot_name} with WEBHOOK...`);
+    
+    const token = botRecord.getDecryptedToken();
+    if (!token) {
+      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
+      return false;
+    }
+    
+    const bot = new Telegraf(token, {
+      handlerTimeout: 90000,
+      telegram: { 
+        apiRoot: 'https://api.telegram.org',
+        agent: null,
+        timeout: 30000
+      }
+    });
+    
+    // Setup handlers (same as before)
+    const botRef = this.getBotReference(botRecord.bot_name);
+    bot.context.metaBotInfo = {
+      mainBotId: botRecord.id,
+      botId: botRecord.bot_id,
+      botName: botRef.fullName,
+      botUsername: botRecord.bot_username,
+      botRecord: botRecord,
+      environment: this.isDevelopment ? 'development' : 'production',
+      mainBotRef: botRef
+    };
+    
+    this.setupHandlers(bot);
+    await this.setBotCommands(bot, token);
+    
+    // Generate unique webhook URL for this bot
+    const webhookPath = `/webhook/mini/${botRecord.id}`;
+    const webhookUrl = `https://yourdomain.com${webhookPath}`;
+    
+    console.log(`🔗 Setting webhook for ${botRecord.bot_name}: ${webhookUrl}`);
+    
+    // Set webhook instead of starting polling
+    await bot.telegram.setWebhook(webhookUrl);
+    
+    this.activeBots.set(botRecord.id, { 
+      instance: bot, 
+      record: botRecord,
+      token: token,
+      launchedAt: new Date(),
+      status: 'active',
+      environment: this.isDevelopment ? 'development' : 'production',
+      usesWebhook: true,
+      webhookPath: webhookPath,
+      webhookUrl: webhookUrl
+    });
+    
+    console.log(`✅ ${botRecord.bot_name} started with webhook`);
+    return true;
+    
+  } catch (error) {
+    console.error(`❌ Webhook failed for ${botRecord.bot_name}:`, error.message);
+    return false;
+  }
+}
+
+// Webhook handler for mini-bots
+async handleMiniBotWebhook(ctx, next, botId) {
+  try {
+    const botData = this.activeBots.get(parseInt(botId));
+    if (!botData || !botData.instance) {
+      console.error(`❌ Webhook: Bot ${botId} not found`);
+      return ctx.status = 404;
+    }
+    
+    // Use the bot instance to handle the update
+    await botData.instance.handleUpdate(ctx.request.body, ctx.response);
+    
+  } catch (error) {
+    console.error(`❌ Webhook error for bot ${botId}:`, error);
+    ctx.status = 500;
+  }
+}
   
 async _initializeAllBots() {
   try {
@@ -199,113 +282,20 @@ for (let i = 0; i < activeBots.length; i++) {
     console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
- async initializeBot(botRecord) {
+async initializeBot(botRecord) {
   try {
     console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
     
     if (this.activeBots.has(botRecord.id)) {
-      console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+      console.log(`⚠️ Bot ${botRecord.bot_name} is already active, stopping first...`);
       await this.stopBot(botRecord.id);
     }
     
-    console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
-    const token = botRecord.getDecryptedToken();
-    if (!token) {
-      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-      return false;
-    }
-    
-    if (!this.isValidBotToken(token)) {
-      console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
-      return false;
-    }
-    
-    console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
-    
-    const bot = new Telegraf(token, {
-      handlerTimeout: 90000,
-      telegram: { 
-        apiRoot: 'https://api.telegram.org',
-        agent: null,
-        timeout: 30000
-      }
-    });
-    
-    const botRef = this.getBotReference(botRecord.bot_name);
-    
-    bot.context.metaBotInfo = {
-      mainBotId: botRecord.id,
-      botId: botRecord.bot_id,
-      botName: botRef.fullName,
-      botUsername: botRecord.bot_username,
-      botRecord: botRecord,
-      environment: this.isDevelopment ? 'development' : 'production',
-      mainBotRef: botRef
-    };
-    
-    this.setupHandlers(bot);
-    
-    await this.setBotCommands(bot, token);
-    
-    console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-    
-    this.activeBots.set(botRecord.id, { 
-      instance: bot, 
-      record: botRecord,
-      token: token,
-      launchedAt: new Date(),
-      status: 'launching',
-      environment: this.isDevelopment ? 'development' : 'production'
-    });
-    
-    console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-    
-
-// 🔥 ENHANCED POLLING WITH CONFLICT RESOLUTION
-try {
-  console.log(`🔄 Starting ${botRecord.bot_name}...`);
-  
-  // Quick webhook delete
-  await bot.telegram.deleteWebhook().catch(() => {}); // Ignore errors
-  
-  // Short delay (3-6 seconds)
-  const delay = Math.floor(Math.random() * 3000) + 3000;
-  await new Promise(resolve => setTimeout(resolve, delay));
-  
-  // Start polling with NO OPTIONS, NO VERIFICATION
-  bot.startPolling();
-  
-  console.log(`✅ ${botRecord.bot_name} started`);
-  
-  // Mark active immediately
-  const botData = this.activeBots.get(botRecord.id);
-  if (botData) {
-    botData.status = 'active';
-    botData.launchedAt = new Date();
-  }
-  
-  return true;
-  
-} catch (error) {
-  console.log(`⚠️ ${botRecord.bot_name} had issue but marked active:`, error.message);
-  
-  // Mark active anyway
-  const botData = this.activeBots.get(botRecord.id);
-  if (botData) {
-    botData.status = 'active';
-  }
-  
-  return true;
-}
+    // Use webhook instead of polling
+    return await this.initializeBotWithWebhook(botRecord);
     
   } catch (error) {
     console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-    
-    // Only remove from active bots on auth errors
-    if (error.code === 401 || error.message.includes('401') || error.message.includes('Unauthorized')) {
-      this.activeBots.delete(botRecord.id);
-    }
-    
     return false;
   }
 }
@@ -2124,18 +2114,27 @@ try {
   };
   
   stopBot = async (botId) => {
-    try {
-      const botData = this.activeBots.get(botId);
-      if (botData && botData.instance) {
-        console.log(`🛑 Stopping bot ${botId}...`);
+  try {
+    const botData = this.activeBots.get(botId);
+    if (botData && botData.instance) {
+      console.log(`🛑 Stopping bot ${botId}...`);
+      
+      if (botData.usesWebhook) {
+        // Delete webhook for webhook-based bots
+        await botData.instance.telegram.deleteWebhook();
+        console.log(`✅ Webhook deleted for bot ${botId}`);
+      } else {
+        // Stop polling for polling-based bots
         await botData.instance.stop();
-        this.activeBots.delete(botId);
-        console.log(`✅ Bot ${botId} stopped successfully`);
       }
-    } catch (error) {
-      console.error(`Error stopping bot ${botId}:`, error);
+      
+      this.activeBots.delete(botId);
+      console.log(`✅ Bot ${botId} stopped successfully`);
     }
-  };
+  } catch (error) {
+    console.error(`Error stopping bot ${botId}:`, error);
+  }
+};
 
   healthCheck = () => {
     console.log('🏥 Mini-bot Manager Health Check:');
