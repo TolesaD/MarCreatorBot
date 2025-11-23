@@ -75,93 +75,89 @@ class MiniBotManager {
     return result;
   }
   
-  async _initializeAllBots() {
-    try {
-      console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
-      
-      await this.clearAllBots();
-      
-      console.log('⏳ Waiting for database to be fully ready...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const activeBots = await Bot.findAll({ where: { is_active: true } });
-      
-      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-      
-      if (activeBots.length === 0) {
-        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
-        this.isInitialized = true;
-        return 0;
-      }
-      
-      let successCount = 0;
-let failedCount = 0;
-
-// Process bots in smaller batches with delays
-const BATCH_SIZE = 3; // Reduced from concurrent to 3 bots at a time
-const BATCH_DELAY = 5000; // 5 seconds between batches
-
-for (let i = 0; i < activeBots.length; i += BATCH_SIZE) {
-  const batch = activeBots.slice(i, i + BATCH_SIZE);
-  console.log(`\n🔄 Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(activeBots.length/BATCH_SIZE)} (${batch.length} bots)...`);
-  
-  const batchPromises = batch.map(async (botRecord) => {
-    try {
-      console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-      
-      const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
-      if (owner && owner.is_banned) {
-        console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
-        await botRecord.update({ is_active: false });
-        failedCount++;
-        return null;
-      }
-      
-      const success = await this.initializeBotWithEncryptionCheck(botRecord);
-      
-      if (success) {
-        successCount++;
-        console.log(`✅ Initialization started: ${botRecord.bot_name}`);
-      } else {
-        failedCount++;
-        console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
-      }
-      
-      return success;
-    } catch (error) {
-      console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-      failedCount++;
-      console.log(`🔄 Continuing with next bot despite error...`);
-      return null;
-    }
-  });
-  
-  // Wait for current batch to complete
-  await Promise.allSettled(batchPromises);
-  
-  // Wait before next batch (unless it's the last batch)
-  if (i + BATCH_SIZE < activeBots.length) {
-    console.log(`⏳ Waiting ${BATCH_DELAY/1000}s before next batch...`);
-    await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
-  }
-}
-      
-      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
-      
-      console.log('⏳ Waiting for bots to complete launch...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      
+async _initializeAllBots() {
+  try {
+    console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
+    
+    await this.clearAllBots();
+    
+    console.log('⏳ Waiting for database to be fully ready...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const activeBots = await Bot.findAll({ where: { is_active: true } });
+    
+    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+    
+    if (activeBots.length === 0) {
+      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
       this.isInitialized = true;
-      this.debugActiveBots();
-      
-      return successCount;
-      
-    } catch (error) {
-      console.error('💥 CRITICAL: Error initializing all bots:', error);
-      this.isInitialized = false;
       return 0;
     }
+    
+    let successCount = 0;
+    let failedCount = 0;
+    
+    console.log(`🚀 INITIALIZING BOTS SEQUENTIALLY WITH 10s DELAYS`);
+    
+    // Process bots ONE AT A TIME with significant delays
+    for (let i = 0; i < activeBots.length; i++) {
+      const botRecord = activeBots[i];
+      
+      try {
+        console.log(`\n🔄 [${i+1}/${activeBots.length}] Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+        
+        const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+        if (owner && owner.is_banned) {
+          console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
+          await botRecord.update({ is_active: false });
+          failedCount++;
+          continue;
+        }
+        
+        const success = await this.initializeBotWithEncryptionCheck(botRecord);
+        
+        if (success) {
+          successCount++;
+          console.log(`✅ Initialization SUCCESS: ${botRecord.bot_name}`);
+        } else {
+          failedCount++;
+          console.error(`❌ Initialization FAILED: ${botRecord.bot_name}`);
+        }
+        
+        // Wait 10 seconds between each bot initialization
+        if (i < activeBots.length - 1) {
+          console.log(`⏳ Waiting 10 seconds before next bot...`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+        
+      } catch (error) {
+        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
+        failedCount++;
+        console.log(`🔄 Continuing with next bot despite error...`);
+        
+        // Wait even on error before continuing
+        if (i < activeBots.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+      }
+    }
+    
+    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+    
+    console.log('⏳ Waiting for bots to complete launch...');
+    await new Promise(resolve => setTimeout(resolve, 15000));
+    
+    this.isInitialized = true;
+    this.debugActiveBots();
+    
+    return successCount;
+    
+  } catch (error) {
+    console.error('💥 CRITICAL: Error initializing all bots:', error);
+    this.isInitialized = false;
+    return 0;
   }
+}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {
@@ -259,115 +255,74 @@ for (let i = 0; i < activeBots.length; i += BATCH_SIZE) {
     console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
     
     // 🔥 ENHANCED LAUNCH WITH STAGGERED POLLING & CONFLICT RESOLUTION
-    try {
-      console.log(`🔄 Step 1: Deleting webhook for ${botRecord.bot_name}...`);
-      
-      // Delete any existing webhook first
-      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-      console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
-      
-      // Wait a moment before polling
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log(`🔄 Step 2: Starting polling for ${botRecord.bot_name}...`);
-      
-      // Use enhanced polling with conflict resolution
-      const pollingOptions = {
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
-        polling: {
-          timeout: 30, // Increased timeout
-          limit: 50,   // Reduced limit
-          params: {
-            timeout: 30
-          }
-        }
-      };
-      
-      // Start polling with retry mechanism
-      let retries = 3;
-      let success = false;
-      
-      while (retries > 0 && !success) {
-        try {
-          console.log(`🔄 Polling attempt ${4 - retries}/3 for ${botRecord.bot_name}...`);
-          
-          const pollingPromise = bot.startPolling(pollingOptions);
-          
-          // Add timeout to prevent hanging
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error(`Polling start timeout after 20000ms for ${botRecord.bot_name}`)), 20000);
-          });
-          
-          await Promise.race([pollingPromise, timeoutPromise]);
-          
-          // Verify bot is actually working
-          await bot.telegram.getMe();
-          
-          console.log(`✅ Bot ${botRecord.bot_name} started successfully with polling`);
-          success = true;
-          
-        } catch (pollingError) {
-          retries--;
-          console.error(`❌ Polling attempt failed for ${botRecord.bot_name}:`, pollingError.message);
-          
-          if (retries > 0) {
-            console.log(`🔄 Retrying in 3 seconds... (${retries} attempts left)`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-        }
-      }
-      
-      if (!success) {
-        throw new Error(`All polling attempts failed for ${botRecord.bot_name}`);
-      }
-      
-      // Update bot status
-      const botData = this.activeBots.get(botRecord.id);
-      if (botData) {
-        botData.status = 'active';
-        botData.launchedAt = new Date();
-        console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
-      }
-      
-      return true;
-      
-    } catch (launchError) {
-      console.error(`❌ Launch failed for ${botRecord.bot_name}:`, launchError.message);
-      
-      // Try alternative method for timeout errors
-      if (launchError.message.includes('timeout') || launchError.message.includes('Conflict')) {
-        console.log(`🔄 Trying alternative start for ${botRecord.bot_name}...`);
-        try {
-          // Force start without waiting for confirmation
-          bot.startPolling({
-            dropPendingUpdates: true,
-            allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
-            polling: {
-              timeout: 10,
-              limit: 50
-            }
-          });
-          
-          // Wait a bit for polling to initialize
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          console.log(`✅ Bot ${botRecord.bot_name} started with alternative method`);
-          
-          const botData = this.activeBots.get(botRecord.id);
-          if (botData) {
-            botData.status = 'active';
-            console.log(`✅ Bot marked as ACTIVE after alternative start: ${botRecord.bot_name}`);
-          }
-          
-          return true;
-        } catch (altError) {
-          console.error(`❌ Alternative start also failed for ${botRecord.bot_name}:`, altError.message);
-        }
-      }
-      
-      return false;
+    // 🔥 SIMPLIFIED POLLING - NO RETRIES, JUST DIRECT START
+try {
+  console.log(`🔄 Step 1: Deleting webhook for ${botRecord.bot_name}...`);
+  
+  // Delete any existing webhook first
+  await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+  console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
+  
+  // Wait before polling
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  console.log(`🔄 Step 2: Starting polling for ${botRecord.bot_name}...`);
+  
+  // SIMPLE POLLING START - no complex timeout handling
+  bot.startPolling({
+    dropPendingUpdates: true,
+    allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
+    polling: {
+      timeout: 60, // Much longer timeout
+      limit: 30,   // Smaller limit
     }
+  });
+  
+  // Wait for polling to initialize
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  // Try to verify bot is working
+  try {
+    await bot.telegram.getMe();
+    console.log(`✅ Bot ${botRecord.bot_name} verification successful`);
+  } catch (verifyError) {
+    console.log(`⚠️ Bot verification failed but continuing: ${verifyError.message}`);
+  }
+  
+  console.log(`✅ Bot ${botRecord.bot_name} polling started`);
+  
+  // Update bot status
+  const botData = this.activeBots.get(botRecord.id);
+  if (botData) {
+    botData.status = 'active';
+    botData.launchedAt = new Date();
+    console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+  }
+  
+  return true;
+  
+} catch (launchError) {
+  console.error(`❌ Launch failed for ${botRecord.bot_name}:`, launchError.message);
+  
+  // Try ultra-simple fallback
+  console.log(`🔄 Trying ultra-simple start for ${botRecord.bot_name}...`);
+  try {
+    // Just start polling without any options
+    bot.startPolling();
+    console.log(`✅ Bot ${botRecord.bot_name} started with ultra-simple method`);
+    
+    const botData = this.activeBots.get(botRecord.id);
+    if (botData) {
+      botData.status = 'active';
+      console.log(`✅ Bot marked as ACTIVE after simple start: ${botRecord.bot_name}`);
+    }
+    
+    return true;
+  } catch (simpleError) {
+    console.error(`❌ Ultra-simple start also failed for ${botRecord.bot_name}:`, simpleError.message);
+    return false;
+  }
+}
     
   } catch (error) {
     console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
