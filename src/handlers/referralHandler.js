@@ -111,7 +111,8 @@ class ReferralHandler {
       this.referralSessions = this.referralSessions || new Map();
       this.referralSessions.set(ctx.from.id, {
         botId: botId,
-        step: 'awaiting_referral_rate'
+        step: 'awaiting_referral_rate',
+        timestamp: Date.now()
       });
 
       const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
@@ -146,7 +147,8 @@ class ReferralHandler {
       this.referralSessions = this.referralSessions || new Map();
       this.referralSessions.set(ctx.from.id, {
         botId: botId,
-        step: 'awaiting_min_withdrawal'
+        step: 'awaiting_min_withdrawal',
+        timestamp: Date.now()
       });
 
       const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
@@ -181,7 +183,8 @@ class ReferralHandler {
       this.referralSessions = this.referralSessions || new Map();
       this.referralSessions.set(ctx.from.id, {
         botId: botId,
-        step: 'awaiting_currency'
+        step: 'awaiting_currency',
+        timestamp: Date.now()
       });
 
       const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
@@ -243,6 +246,9 @@ class ReferralHandler {
   // Process referral settings changes from text input
   static async processReferralSettingChange(ctx, botId, input) {
     try {
+      // Clean up expired sessions first
+      this.cleanupExpiredSessions();
+
       const session = this.referralSessions?.get(ctx.from.id);
       if (!session) {
         return false;
@@ -250,6 +256,13 @@ class ReferralHandler {
 
       if (session.botId != botId) {
         this.referralSessions.delete(ctx.from.id);
+        return false;
+      }
+
+      // Check if session is expired (30 minutes)
+      if (Date.now() - session.timestamp > 30 * 60 * 1000) {
+        this.referralSessions.delete(ctx.from.id);
+        await ctx.reply('❌ Session expired. Please start over.');
         return false;
       }
 
@@ -340,40 +353,40 @@ class ReferralHandler {
   }
 
   // Handle referral stats
-static async handleReferralStats(ctx, botId) {
-  try {
-    if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery('📊 Loading stats...');
-    }
-    
-    const stats = await this.getProgramStats(botId);
-    const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
+  static async handleReferralStats(ctx, botId) {
+    try {
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('📊 Loading stats...');
+      }
+      
+      const stats = await this.getProgramStats(botId);
+      const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
 
-    const message = `📊 <b>Referral Program Statistics</b>\n\n` +
-      `<b>Overall Stats:</b>\n` +
-      `• Total Referrals: ${stats.totalReferrals}\n` +
-      `• Completed Referrals: ${stats.completedReferrals}\n` +
-      `• Total Paid Out: ${program.currency} ${stats.totalPaid.toFixed(2)}\n` +
-      `• Pending Withdrawals: ${program.currency} ${stats.pendingWithdrawals.toFixed(2)}\n\n` +
-      `<b>Conversion Rate:</b> ${stats.totalReferrals > 0 ? ((stats.completedReferrals / stats.totalReferrals) * 100).toFixed(1) : 0}%`;
+      const message = `📊 <b>Referral Program Statistics</b>\n\n` +
+        `<b>Overall Stats:</b>\n` +
+        `• Total Referrals: ${stats.totalReferrals}\n` +
+        `• Completed Referrals: ${stats.completedReferrals}\n` +
+        `• Total Paid Out: ${program.currency} ${stats.totalPaid.toFixed(2)}\n` +
+        `• Pending Withdrawals: ${program.currency} ${stats.pendingWithdrawals.toFixed(2)}\n\n` +
+        `<b>Conversion Rate:</b> ${stats.totalReferrals > 0 ? ((stats.completedReferrals / stats.totalReferrals) * 100).toFixed(1) : 0}%`;
 
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Back', `ref_manage_${botId}`)]
-    ]);
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔙 Back', `ref_manage_${botId}`)]
+      ]);
 
-    if (ctx.updateType === 'callback_query' && ctx.callbackQuery?.message) {
-      await this.safeEditMessageWithHTML(ctx, message, keyboard);
-    } else {
-      await this.safeReplyWithHTML(ctx, message, keyboard);
-    }
+      if (ctx.updateType === 'callback_query' && ctx.callbackQuery?.message) {
+        await this.safeEditMessageWithHTML(ctx, message, keyboard);
+      } else {
+        await this.safeReplyWithHTML(ctx, message, keyboard);
+      }
 
-  } catch (error) {
-    console.error('Handle referral stats error:', error);
-    if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery('❌ Error loading stats');
+    } catch (error) {
+      console.error('Handle referral stats error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading stats');
+      }
     }
   }
-}
 
   // Handle withdrawal requests view
   static async handleWithdrawalRequests(ctx, botId) {
@@ -785,12 +798,13 @@ static async handleReferralStats(ctx, botId) {
         return;
       }
 
-      // Start withdrawal session
+      // Start withdrawal session - FIX: Ensure session is properly stored
       this.withdrawalSessions = this.withdrawalSessions || new Map();
       this.withdrawalSessions.set(ctx.from.id, {
         botId: botId,
         step: 'awaiting_withdrawal_amount',
-        maxAmount: stats.currentBalance
+        maxAmount: stats.currentBalance,
+        timestamp: Date.now() // Add timestamp for session management
       });
 
       await this.safeReplyWithHTML(
@@ -814,12 +828,28 @@ static async handleReferralStats(ctx, botId) {
     }
   }
 
-  // Process withdrawal amount
+  // Process withdrawal amount - FIX: Improved session validation and cleanup
   static async processWithdrawalAmount(ctx, botId, input) {
     try {
+      // Clean up expired sessions first (older than 30 minutes)
+      this.cleanupExpiredSessions();
+
       const session = this.withdrawalSessions?.get(ctx.from.id);
-      if (!session || session.botId != botId) {
-        await ctx.reply('❌ No active withdrawal session found.');
+      if (!session) {
+        await ctx.reply('❌ No active withdrawal session found. Please start a new withdrawal request.');
+        return false;
+      }
+
+      if (session.botId != botId) {
+        this.withdrawalSessions.delete(ctx.from.id);
+        await ctx.reply('❌ Session mismatch. Please start a new withdrawal request.');
+        return false;
+      }
+
+      // Check if session is expired (30 minutes)
+      if (Date.now() - session.timestamp > 30 * 60 * 1000) {
+        this.withdrawalSessions.delete(ctx.from.id);
+        await ctx.reply('❌ Withdrawal session expired. Please start a new request.');
         return false;
       }
 
@@ -885,6 +915,28 @@ static async handleReferralStats(ctx, botId) {
       await ctx.reply('❌ Error processing withdrawal amount.');
       this.withdrawalSessions?.delete(ctx.from.id);
       return false;
+    }
+  }
+
+  // NEW METHOD: Clean up expired sessions
+  static cleanupExpiredSessions() {
+    const now = Date.now();
+    const expirationTime = 30 * 60 * 1000; // 30 minutes
+    
+    if (this.withdrawalSessions) {
+      for (const [userId, session] of this.withdrawalSessions.entries()) {
+        if (now - session.timestamp > expirationTime) {
+          this.withdrawalSessions.delete(userId);
+        }
+      }
+    }
+    
+    if (this.referralSessions) {
+      for (const [userId, session] of this.referralSessions.entries()) {
+        if (now - session.timestamp > expirationTime) {
+          this.referralSessions.delete(userId);
+        }
+      }
     }
   }
 
@@ -1139,13 +1191,25 @@ static async handleReferralStats(ctx, botId) {
     }
   }
 
-  // Process text input for withdrawal amounts
+  // Process text input for withdrawal amounts - FIX: Better session detection
   static async processWithdrawalTextInput(ctx, botId, input) {
     try {
+      // Clean up expired sessions first
+      this.cleanupExpiredSessions();
+
       const session = this.withdrawalSessions?.get(ctx.from.id);
+      
+      // Check if this is a withdrawal session
       if (session && session.botId == botId && session.step === 'awaiting_withdrawal_amount') {
         return await this.processWithdrawalAmount(ctx, botId, input);
       }
+
+      // Also check for referral setting sessions
+      const referralSession = this.referralSessions?.get(ctx.from.id);
+      if (referralSession && referralSession.botId == botId) {
+        return await this.processReferralSettingChange(ctx, botId, input);
+      }
+
       return false;
     } catch (error) {
       console.error('Process withdrawal text input error:', error);

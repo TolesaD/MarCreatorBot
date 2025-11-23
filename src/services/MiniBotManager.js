@@ -77,9 +77,11 @@ class MiniBotManager {
   
 async _initializeAllBots() {
   try {
-    console.log(`🔄 CRITICAL: Starting ULTRA-CONSERVATIVE mini-bot initialization...`);
+    console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
     
     await this.clearAllBots();
+    
+    console.log('⏳ Waiting for database to be fully ready...');
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     const activeBots = await Bot.findAll({ where: { is_active: true } });
@@ -87,6 +89,7 @@ async _initializeAllBots() {
     console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
     
     if (activeBots.length === 0) {
+      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
       this.isInitialized = true;
       return 0;
     }
@@ -94,18 +97,19 @@ async _initializeAllBots() {
     let successCount = 0;
     let failedCount = 0;
     
-    console.log(`🚀 ULTRA-CONSERVATIVE: 1 bot every 20 seconds`);
+    // ULTRA-CONSERVATIVE SEQUENTIAL INITIALIZATION
+    console.log(`🚀 INITIALIZING ${activeBots.length} BOTS WITH 10-15 SECOND DELAYS`);
     
     for (let i = 0; i < activeBots.length; i++) {
       const botRecord = activeBots[i];
       const progress = `${i+1}/${activeBots.length}`;
       
       try {
-        console.log(`\n🔄 [${progress}] ${botRecord.bot_name}`);
+        console.log(`\n🔄 [${progress}] Initializing: ${botRecord.bot_name}`);
         
         const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
         if (owner && owner.is_banned) {
-          console.log(`🚫 Skipping - banned owner`);
+          console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
           await botRecord.update({ is_active: false });
           failedCount++;
           continue;
@@ -115,33 +119,38 @@ async _initializeAllBots() {
         
         if (success) {
           successCount++;
-          console.log(`✅ [${progress}] ${botRecord.bot_name}`);
+          console.log(`✅ [${progress}] SUCCESS: ${botRecord.bot_name}`);
         } else {
           failedCount++;
-          console.log(`❌ [${progress}] ${botRecord.bot_name}`);
+          console.error(`❌ [${progress}] FAILED: ${botRecord.bot_name}`);
         }
         
-        // Progress
+        // Progress tracking
         const progressPercent = ((i + 1) / activeBots.length * 100).toFixed(1);
-        console.log(`📊 ${progressPercent}% complete`);
+        const estimatedMinutes = ((activeBots.length - (i + 1)) * 12 / 60).toFixed(1);
+        console.log(`📊 ${progressPercent}% complete | ~${estimatedMinutes} minutes remaining`);
         
-        // ULTRA-LONG delay between bots (20 seconds)
+        // LONG delay between bots (10-15 seconds) - CRITICAL!
         if (i < activeBots.length - 1) {
-          console.log(`⏳ Waiting 20 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 20000));
+          const delay = Math.floor(Math.random() * 5000) + 10000; // 10-15 seconds
+          console.log(`⏳ Waiting ${delay/1000} seconds before next bot...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
         
       } catch (error) {
-        console.error(`💥 [${progress}] ${botRecord.bot_name}:`, error.message);
+        console.error(`💥 [${progress}] Error: ${botRecord.bot_name} -`, error.message);
         failedCount++;
         
+        // Long wait even on error
         if (i < activeBots.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 20000));
+          const errorDelay = 15000; // 15 seconds on error
+          console.log(`⏳ Waiting ${errorDelay/1000}s after error...`);
+          await new Promise(resolve => setTimeout(resolve, errorDelay));
         }
       }
     }
     
-    console.log(`\n🎉 DONE: ${successCount}/${activeBots.length} successful`);
+    console.log(`\n🎉 INITIALIZATION COMPLETE: ${successCount}/${activeBots.length} successful (${failedCount} failed)`);
     
     this.isInitialized = true;
     this.debugActiveBots();
@@ -149,7 +158,7 @@ async _initializeAllBots() {
     return successCount;
     
   } catch (error) {
-    console.error('💥 Initialization failed:', error);
+    console.error('💥 CRITICAL: Error initializing all bots:', error);
     this.isInitialized = false;
     return 0;
   }
@@ -693,8 +702,7 @@ try {
         `*Quick Stats:*\n` +
         `📨 ${stats.pendingMessages} pending messages\n` +
         `👥 ${stats.totalUsers} total users\n` +
-        `💬 ${stats.totalMessages} total messages\n` +
-        `🌍 *Environment:* ${this.isDevelopment ? '🚧 DEVELOPMENT' : '🚀 PRODUCTION'}\n\n` +
+        `💬 ${stats.totalMessages} total messages}\n\n` +
         `*Quick Access:*\n` +
         `• Use commands from menu (/) button\n` +
         `• Or click buttons below`;
@@ -827,7 +835,6 @@ try {
         `📢 Force Channels: ${channelCount > 0 ? '🟢 Active' : '🔴 Inactive'}\n` +
         `💰 Referral Program: ${referralProgram?.is_enabled ? '🟢 Active' : '🔴 Inactive'}\n` +
         `🚫 User Ban System: ${banCount > 0 ? '🟢 Active' : '🔴 Inactive'}\n\n` +
-        `*Environment:* ${this.isDevelopment ? '🚧 DEVELOPMENT' : '🚀 PRODUCTION'}\n` +
         `*Main Bot:* @${botRef.username}\n\n` +
         `*Available Settings:*`;
       
@@ -1014,7 +1021,6 @@ try {
           `• Use broadcast for important announcements\n` +
           `• Add co-admins to help manage messages\n` +
           `• You can send images, videos, and files as admin\n` +
-          `• *Environment:* ${this.isDevelopment ? '🚧 DEVELOPMENT' : '🚀 PRODUCTION'}\n\n` +
           `*Need help?* Contact @${botRef.supportBot}`;
       } else {
         helpMessage = `🤖 *Help & Support*\n\n` +
@@ -1661,7 +1667,6 @@ try {
         `👥 Total Users: ${userCount}\n` +
         `💬 Total Messages: ${messageCount}\n` +
         `📨 Pending Replies: ${pendingCount}\n` +
-        `🌍 Environment: ${this.isDevelopment ? '🚧 DEVELOPMENT' : '🚀 PRODUCTION'}\n` +
         `🔄 Status: ✅ Active\n\n` +
         `*Message Types:*\n${typeBreakdown}`;
       
@@ -1847,7 +1852,6 @@ try {
       const aboutMessage = `ℹ️ *About ${metaBotInfo.botName}*\n\n` +
         `*Bot Username:* @${metaBotInfo.botUsername}\n` +
         `*Created via:* @${botRef.username}\n` +
-        `*Environment:* ${this.isDevelopment ? '🚧 DEVELOPMENT' : '🚀 PRODUCTION'}\n\n` +
         `*Create your own bot:* @${botRef.username}`;
       
       await ctx.replyWithMarkdown(aboutMessage);
