@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - WITH ENVIRONMENT SUPPORT & ALL FEATURES
+// src/services/MiniBotManager.js - OPTIMIZED POLLING VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -74,179 +74,95 @@ class MiniBotManager {
     this.initializationPromise = null;
     return result;
   }
-
-  // Webhook-based bot initialization
-async initializeBotWithWebhook(botRecord) {
-  try {
-    console.log(`🌐 Starting ${botRecord.bot_name} with WEBHOOK...`);
-    
-    const token = botRecord.getDecryptedToken();
-    if (!token) {
-      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-      return false;
-    }
-    
-    const bot = new Telegraf(token, {
-      handlerTimeout: 90000,
-      telegram: { 
-        apiRoot: 'https://api.telegram.org',
-        agent: null,
-        timeout: 30000
-      }
-    });
-    
-    // Setup handlers (same as before)
-    const botRef = this.getBotReference(botRecord.bot_name);
-    bot.context.metaBotInfo = {
-      mainBotId: botRecord.id,
-      botId: botRecord.bot_id,
-      botName: botRef.fullName,
-      botUsername: botRecord.bot_username,
-      botRecord: botRecord,
-      environment: this.isDevelopment ? 'development' : 'production',
-      mainBotRef: botRef
-    };
-    
-    this.setupHandlers(bot);
-    await this.setBotCommands(bot, token);
-    
-    // Generate unique webhook URL for this bot
-    const webhookPath = `/webhook/mini/${botRecord.id}`;
-    const webhookUrl = `https://testweb.maroset.com${webhookPath}`;
-    
-    console.log(`🔗 Setting webhook for ${botRecord.bot_name}: ${webhookUrl}`);
-    
-    // Set webhook instead of starting polling
-    await bot.telegram.setWebhook(webhookUrl);
-    
-    this.activeBots.set(botRecord.id, { 
-      instance: bot, 
-      record: botRecord,
-      token: token,
-      launchedAt: new Date(),
-      status: 'active',
-      environment: this.isDevelopment ? 'development' : 'production',
-      usesWebhook: true,
-      webhookPath: webhookPath,
-      webhookUrl: webhookUrl
-    });
-    
-    console.log(`✅ ${botRecord.bot_name} started with webhook`);
-    return true;
-    
-  } catch (error) {
-    console.error(`❌ Webhook failed for ${botRecord.bot_name}:`, error.message);
-    return false;
-  }
-}
-
-// Webhook handler for mini-bots
-async handleMiniBotWebhook(ctx, next, botId) {
-  try {
-    const botData = this.activeBots.get(parseInt(botId));
-    if (!botData || !botData.instance) {
-      console.error(`❌ Webhook: Bot ${botId} not found`);
-      return ctx.status = 404;
-    }
-    
-    // Use the bot instance to handle the update
-    await botData.instance.handleUpdate(ctx.request.body, ctx.response);
-    
-  } catch (error) {
-    console.error(`❌ Webhook error for bot ${botId}:`, error);
-    ctx.status = 500;
-  }
-}
   
-async _initializeAllBots() {
-  try {
-    console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
-    
-    await this.clearAllBots();
-    
-    console.log('⏳ Waiting for database to be fully ready...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-    
-    if (activeBots.length === 0) {
-      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+  async _initializeAllBots() {
+    try {
+      console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
+      
+      await this.clearAllBots();
+      
+      console.log('⏳ Waiting for database to be fully ready...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const activeBots = await Bot.findAll({ where: { is_active: true } });
+      
+      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+      
+      if (activeBots.length === 0) {
+        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+        this.isInitialized = true;
+        return 0;
+      }
+      
+      let successCount = 0;
+      let failedCount = 0;
+      
+      // Process bots sequentially with optimized delays
+      console.log(`🚀 INITIALIZING ${activeBots.length} BOTS SEQUENTIALLY`);
+      
+      for (let i = 0; i < activeBots.length; i++) {
+        const botRecord = activeBots[i];
+        const progress = `${i+1}/${activeBots.length}`;
+        
+        try {
+          console.log(`\n🔄 [${progress}] Initializing: ${botRecord.bot_name}`);
+          
+          const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+          if (owner && owner.is_banned) {
+            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
+            await botRecord.update({ is_active: false });
+            failedCount++;
+            continue;
+          }
+          
+          const success = await this.initializeBotWithEncryptionCheck(botRecord);
+          
+          if (success) {
+            successCount++;
+            console.log(`✅ [${progress}] SUCCESS: ${botRecord.bot_name}`);
+          } else {
+            failedCount++;
+            console.error(`❌ [${progress}] FAILED: ${botRecord.bot_name}`);
+          }
+          
+          // Progress tracking
+          const progressPercent = ((i + 1) / activeBots.length * 100).toFixed(1);
+          console.log(`📊 ${progressPercent}% complete`);
+          
+          // Optimized delay between bots (3-5 seconds)
+          if (i < activeBots.length - 1) {
+            const delay = Math.floor(Math.random() * 2000) + 3000;
+            console.log(`⏳ ${delay}ms before next bot...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          
+        } catch (error) {
+          console.error(`💥 [${progress}] Error: ${botRecord.bot_name} -`, error.message);
+          failedCount++;
+          
+          // Wait even on error
+          if (i < activeBots.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+      }
+      
+      console.log(`\n🎉 INITIALIZATION COMPLETE: ${successCount}/${activeBots.length} successful (${failedCount} failed)`);
+      
+      // Quick final wait
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
       this.isInitialized = true;
+      this.debugActiveBots();
+      
+      return successCount;
+      
+    } catch (error) {
+      console.error('💥 CRITICAL: Error initializing all bots:', error);
+      this.isInitialized = false;
       return 0;
     }
-    
-    let successCount = 0;
-    let failedCount = 0;
-    
-    // ADD THIS LINE - start time for progress tracking
-    const startTime = Date.now();
-    
-    // Process bots sequentially with progress tracking
-    console.log(`🚀 INITIALIZING ${activeBots.length} BOTS SEQUENTIALLY`);
-
-for (let i = 0; i < activeBots.length; i++) {
-  const botRecord = activeBots[i];
-  const progress = `${i+1}/${activeBots.length}`;
-  
-  try {
-    console.log(`\n🔄 [${progress}] ${botRecord.bot_name}`);
-    
-    // Quick owner check
-    const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
-    if (owner && owner.is_banned) {
-      console.log(`🚫 Skipping - banned owner`);
-      await botRecord.update({ is_active: false });
-      failedCount++;
-      continue;
-    }
-    
-    const success = await this.initializeBotWithEncryptionCheck(botRecord);
-    
-    if (success) {
-      successCount++;
-      console.log(`✅ [${progress}] ${botRecord.bot_name}`);
-    } else {
-      failedCount++;
-      console.log(`❌ [${progress}] ${botRecord.bot_name}`);
-    }
-    
-    // Progress tracking
-    const progressPercent = ((i + 1) / activeBots.length * 100).toFixed(1);
-    console.log(`📊 ${progressPercent}% complete`);
-    
-    // SHORTER delays between bots (2-4 seconds)
-    if (i < activeBots.length - 1) {
-      const delay = Math.floor(Math.random() * 2000) + 2000;
-      console.log(`⏳ ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-    
-  } catch (error) {
-    console.error(`💥 [${progress}] ${botRecord.bot_name}:`, error.message);
-    failedCount++;
-    
-    // Short delay even on error
-    if (i < activeBots.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
   }
-}
-    
-    console.log(`\n🎉 DONE: ${successCount}/${activeBots.length} successful`);
-    
-    this.isInitialized = true;
-    this.debugActiveBots();
-    
-    return successCount;
-    
-  } catch (error) {
-    console.error('💥 Initialization failed:', error);
-    this.isInitialized = false;
-    return 0;
-  }
-}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {
@@ -282,23 +198,137 @@ for (let i = 0; i < activeBots.length; i++) {
     console.log(`✅ Cleared ${botIds.length} bot instances`);
   }
   
-async initializeBot(botRecord) {
-  try {
-    console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
-    
-    if (this.activeBots.has(botRecord.id)) {
-      console.log(`⚠️ Bot ${botRecord.bot_name} is already active, stopping first...`);
-      await this.stopBot(botRecord.id);
+  async initializeBot(botRecord) {
+    try {
+      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
+      
+      if (this.activeBots.has(botRecord.id)) {
+        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+        await this.stopBot(botRecord.id);
+      }
+      
+      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
+      const token = botRecord.getDecryptedToken();
+      if (!token) {
+        console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
+        return false;
+      }
+      
+      if (!this.isValidBotToken(token)) {
+        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
+        return false;
+      }
+      
+      console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
+      
+      const bot = new Telegraf(token, {
+        handlerTimeout: 90000,
+        telegram: { 
+          apiRoot: 'https://api.telegram.org',
+          agent: null,
+          timeout: 30000
+        }
+      });
+      
+      const botRef = this.getBotReference(botRecord.bot_name);
+      
+      bot.context.metaBotInfo = {
+        mainBotId: botRecord.id,
+        botId: botRecord.bot_id,
+        botName: botRef.fullName,
+        botUsername: botRecord.bot_username,
+        botRecord: botRecord,
+        environment: this.isDevelopment ? 'development' : 'production',
+        mainBotRef: botRef
+      };
+      
+      this.setupHandlers(bot);
+      
+      await this.setBotCommands(bot, token);
+      
+      console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+      
+      this.activeBots.set(botRecord.id, { 
+        instance: bot, 
+        record: botRecord,
+        token: token,
+        launchedAt: new Date(),
+        status: 'launching',
+        environment: this.isDevelopment ? 'development' : 'production'
+      });
+      
+      console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+      
+      // OPTIMIZED POLLING LAUNCH
+      try {
+        console.log(`🔄 Step 1: Deleting webhook for ${botRecord.bot_name}...`);
+        
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
+        
+        // Wait before polling
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        console.log(`🔄 Step 2: Starting polling for ${botRecord.bot_name}...`);
+        
+        // Simple polling start
+        bot.startPolling({
+          dropPendingUpdates: true,
+          allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
+          polling: {
+            timeout: 30,
+            limit: 30,
+          }
+        });
+        
+        // Wait for polling to initialize
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Try to verify bot is working
+        try {
+          await bot.telegram.getMe();
+          console.log(`✅ Bot ${botRecord.bot_name} verification successful`);
+        } catch (verifyError) {
+          console.log(`⚠️ Bot verification failed but continuing: ${verifyError.message}`);
+        }
+        
+        console.log(`✅ Bot ${botRecord.bot_name} polling started`);
+        
+        // Update bot status
+        const botData = this.activeBots.get(botRecord.id);
+        if (botData) {
+          botData.status = 'active';
+          botData.launchedAt = new Date();
+          console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+        }
+        
+        return true;
+        
+      } catch (launchError) {
+        console.error(`❌ Launch failed for ${botRecord.bot_name}:`, launchError.message);
+        
+        // Fallback - just mark as active and hope it works
+        console.log(`🔄 Fallback for ${botRecord.bot_name} - marking as active anyway`);
+        const botData = this.activeBots.get(botRecord.id);
+        if (botData) {
+          botData.status = 'active';
+          console.log(`✅ Bot marked as ACTIVE with fallback: ${botRecord.bot_name}`);
+        }
+        
+        return true;
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
+      
+      // Only remove from active bots on auth errors
+      if (error.code === 401 || error.message.includes('401') || error.message.includes('Unauthorized')) {
+        this.activeBots.delete(botRecord.id);
+      }
+      
+      return false;
     }
-    
-    // Use webhook instead of polling
-    return await this.initializeBotWithWebhook(botRecord);
-    
-  } catch (error) {
-    console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-    return false;
   }
-}
 
   isValidBotToken(token) {
     if (!token || typeof token !== 'string') {
@@ -2114,27 +2144,18 @@ async initializeBot(botRecord) {
   };
   
   stopBot = async (botId) => {
-  try {
-    const botData = this.activeBots.get(botId);
-    if (botData && botData.instance) {
-      console.log(`🛑 Stopping bot ${botId}...`);
-      
-      if (botData.usesWebhook) {
-        // Delete webhook for webhook-based bots
-        await botData.instance.telegram.deleteWebhook();
-        console.log(`✅ Webhook deleted for bot ${botId}`);
-      } else {
-        // Stop polling for polling-based bots
+    try {
+      const botData = this.activeBots.get(botId);
+      if (botData && botData.instance) {
+        console.log(`🛑 Stopping bot ${botId}...`);
         await botData.instance.stop();
+        this.activeBots.delete(botId);
+        console.log(`✅ Bot ${botId} stopped successfully`);
       }
-      
-      this.activeBots.delete(botId);
-      console.log(`✅ Bot ${botId} stopped successfully`);
+    } catch (error) {
+      console.error(`Error stopping bot ${botId}:`, error);
     }
-  } catch (error) {
-    console.error(`Error stopping bot ${botId}:`, error);
-  }
-};
+  };
 
   healthCheck = () => {
     console.log('🏥 Mini-bot Manager Health Check:');

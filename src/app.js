@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE VERSION WITH FIXED IMPORTS
+﻿// src/app.js - COMPLETE POLLING VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -13,8 +13,8 @@ if (isCpanel) {
 }
 
 const { Telegraf, Markup } = require('telegraf');
-const config = require('../config/environment');
-const { connectDB } = require('../database/db');
+const config = require('./config/environment');
+const { connectDB } = require('./database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
@@ -27,77 +27,22 @@ const BanHandler = require('./handlers/banHandler');
 const ChannelJoinHandler = require('./handlers/channelJoinHandler');
 const ReferralHandler = require('./handlers/referralHandler');
 
-// ⭐ ADD THIS LINE (You forgot it)
-const express = require("express");
-
-// Create Express app for webhooks
-const expressApp = express();
-const PORT = process.env.PORT || 3000;
-
 class MetaBotCreator {
   constructor() {
-    // Get bot token from environment or config
-    const BOT_TOKEN = process.env.BOT_TOKEN || (config && config.BOT_TOKEN);
-    
-    if (!BOT_TOKEN) {
-      console.error('❌ BOT_TOKEN is not set in environment variables or config');
-      console.log('💡 Please set BOT_TOKEN environment variable');
+    if (!config.BOT_TOKEN) {
+      console.error('❌ BOT_TOKEN is not set');
       process.exit(1);
     }
     
-    console.log(`🤖 Creating bot instance with token: ${BOT_TOKEN.substring(0, 10)}...`);
-    this.bot = new Telegraf(BOT_TOKEN, {
+    console.log(`🤖 Creating bot instance with token: ${config.BOT_TOKEN.substring(0, 10)}...`);
+    this.bot = new Telegraf(config.BOT_TOKEN, {
       handlerTimeout: 90000,
       telegram: {
         apiRoot: 'https://api.telegram.org',
         agent: null
       }
     });
-    
-    this.setupExpressWebhooks();
     this.setupHandlers();
-  }
-  
-  setupExpressWebhooks() {
-    console.log('🌐 Setting up Express webhooks for mini-bots...');
-    
-    // Middleware
-    expressApp.use(express.json());
-
-    // Webhook endpoint for mini-bots
-    expressApp.post('/webhook/mini/:botId', async (req, res) => {
-      try {
-        const { botId } = req.params;
-        console.log(`📨 Webhook received for mini-bot ID: ${botId}`);
-        
-        await MiniBotManager.handleMiniBotWebhook({ request: req, response: res }, null, botId);
-        
-      } catch (error) {
-        console.error('Webhook processing error:', error);
-        res.status(500).json({ error: 'Error processing webhook' });
-      }
-    });
-
-    // Health check endpoint
-    expressApp.get('/webhook/health', (req, res) => {
-      res.json({ 
-        status: 'ok', 
-        miniBots: MiniBotManager.activeBots ? MiniBotManager.activeBots.size : 0,
-        environment: process.env.NODE_ENV || 'production',
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    // Root endpoint
-    expressApp.get('/', (req, res) => {
-      res.json({ 
-        message: 'MarCreator Bot Server is running',
-        status: 'active',
-        timestamp: new Date().toISOString()
-      });
-    });
-    
-    console.log('✅ Express webhooks setup complete');
   }
   
   setupHandlers() {
@@ -160,29 +105,20 @@ class MetaBotCreator {
     this.bot.command('debug_minibots', async (ctx) => {
       try {
         await ctx.reply('🔄 Debugging mini-bots...');
-        const status = MiniBotManager.getInitializationStatus ? MiniBotManager.getInitializationStatus() : { status: 'Unknown', isInitialized: false, activeBots: 0 };
+        const status = MiniBotManager.getInitializationStatus();
         let message = `🔍 *Mini-bot Debug Info*\n\n`;
         message += `*Status:* ${status.status}\n`;
         message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
         message += `*Active Bots:* ${status.activeBots}\n`;
         
-        try {
-          const { Bot } = require('./models');
-          const activeBots = await Bot.findAll({ where: { is_active: true } });
-          message += `*Database Active Bots:* ${activeBots.length}\n`;
-        } catch (dbError) {
-          message += `*Database Active Bots:* Error accessing\n`;
-        }
+        const { Bot } = require('./models');
+        const activeBots = await Bot.findAll({ where: { is_active: true } });
+        message += `*Database Active Bots:* ${activeBots.length}\n`;
         
         await ctx.replyWithMarkdown(message);
-        
-        if (MiniBotManager.forceReinitializeAllBots) {
-          await ctx.reply('🔄 Forcing mini-bot reinitialization...');
-          const result = await MiniBotManager.forceReinitializeAllBots();
-          await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
-        } else {
-          await ctx.reply('❌ Mini-bot manager not fully initialized');
-        }
+        await ctx.reply('🔄 Forcing mini-bot reinitialization...');
+        const result = await MiniBotManager.forceReinitializeAllBots();
+        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
       } catch (error) {
         console.error('Debug command error:', error);
         await ctx.reply('❌ Debug command failed.');
@@ -193,39 +129,33 @@ class MetaBotCreator {
       try {
         await ctx.reply('🧪 Testing mini-bot communication...');
         
-        if (MiniBotManager.debugActiveBots) {
-          MiniBotManager.debugActiveBots();
+        MiniBotManager.debugActiveBots();
+        
+        const { Bot } = require('./models');
+        const activeBots = await Bot.findAll({ where: { is_active: true } });
+        
+        if (activeBots.length === 0) {
+          await ctx.reply('❌ No active bots found in database.');
+          return;
         }
         
-        try {
-          const { Bot } = require('./models');
-          const activeBots = await Bot.findAll({ where: { is_active: true } });
-          
-          if (activeBots.length === 0) {
-            await ctx.reply('❌ No active bots found in database.');
-            return;
-          }
-          
-          let testResults = `🧪 *Mini-bot Test Results*\n\n`;
-          
-          for (const botRecord of activeBots) {
-            const botData = MiniBotManager.activeBots ? MiniBotManager.activeBots.get(botRecord.id) : null;
-            if (botData) {
-              try {
-                const botInfo = await botData.instance.telegram.getMe();
-                testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
-              } catch (error) {
-                testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
-              }
-            } else {
-              testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+        let testResults = `🧪 *Mini-bot Test Results*\n\n`;
+        
+        for (const botRecord of activeBots) {
+          const botData = MiniBotManager.activeBots.get(botRecord.id);
+          if (botData) {
+            try {
+              const botInfo = await botData.instance.telegram.getMe();
+              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
+            } catch (error) {
+              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
             }
+          } else {
+            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
           }
-          
-          await ctx.replyWithMarkdown(testResults);
-        } catch (dbError) {
-          await ctx.reply('❌ Error accessing database for test');
         }
+        
+        await ctx.replyWithMarkdown(testResults);
         
       } catch (error) {
         console.error('Test command error:', error);
@@ -551,27 +481,17 @@ class MetaBotCreator {
   }
   
   start() {
-    console.log('🚀 Starting main bot with webhook support...');
+    console.log('🚀 Starting main bot FIRST...');
     
-    // Start Express server for webhooks FIRST
-    console.log('🌐 Starting Express server for webhooks...');
-    expressApp.listen(PORT, () => {
-      console.log(`🚀 Express server running on port ${PORT}`);
-      console.log(`🔗 Webhook URL: https://testweb.maroset.com/webhook/mini/{botId}`);
-      console.log(`❤️  Health check: https://testweb.maroset.com/webhook/health`);
+    // CRITICAL: Start mini-bots BEFORE main bot to ensure they run
+    console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
+    this.startMiniBotsAutomatically().then(result => {
+      if (result > 0) {
+        console.log(`✅ ${result} mini-bots started BEFORE main bot`);
+      }
     });
 
-    // CRITICAL: Start mini-bots AFTER Express server is ready
-    setTimeout(() => {
-      console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
-      this.startMiniBotsAutomatically().then(result => {
-        if (result > 0) {
-          console.log(`✅ ${result} mini-bots started with webhooks`);
-        }
-      });
-    }, 2000);
-    
-    // Start main bot with polling (only one bot uses polling)
+    // Start main bot
     this.bot.launch({
       dropPendingUpdates: true,
       allowedUpdates: ['message', 'callback_query']
@@ -580,14 +500,13 @@ class MetaBotCreator {
         console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
         console.log('========================================');
         console.log('📱 Main Bot: Manages bot creation');
-        console.log('🤖 Mini-bots: Handle user messages via webhooks');
+        console.log('🤖 Mini-bots: Handle user messages');
         console.log('💬 Send /start to see main menu');
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
         console.log('👑 Use /platform for admin dashboard');
         console.log('🔄 Use /reinit to restart mini-bots');
         console.log('🔒 Legal: /privacy & /terms available');
-        console.log('🌐 Webhooks: Active for mini-bots');
         console.log('========================================');
         
       })
@@ -608,21 +527,18 @@ class MetaBotCreator {
       console.log('✅ Main bot stopped');
     }
     
-    if (MiniBotManager.activeBots) {
-      const activeBots = Array.from(MiniBotManager.activeBots.keys());
-      console.log(`🔄 Stopping ${activeBots.length} mini-bots...`);
-      
-      for (const botId of activeBots) {
-        try {
-          await MiniBotManager.stopBot(botId);
-        } catch (error) {
-          console.error(`❌ Failed to stop mini-bot ${botId}:`, error);
-        }
+    const activeBots = Array.from(MiniBotManager.activeBots.keys());
+    console.log(`🔄 Stopping ${activeBots.length} mini-bots...`);
+    
+    for (const botId of activeBots) {
+      try {
+        await MiniBotManager.stopBot(botId);
+      } catch (error) {
+        console.error(`❌ Failed to stop mini-bot ${botId}:`, error);
       }
-      
-      MiniBotManager.activeBots.clear();
     }
     
+    MiniBotManager.activeBots.clear();
     console.log('👋 All bots stopped');
     process.exit(0);
   }
@@ -633,7 +549,6 @@ async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
     console.log('🚀 Optimized for Yegara.com cPanel deployment');
-    console.log('🌐 Webhook support enabled for mini-bots');
     
     const app = new MetaBotCreator();
     await app.initialize();
