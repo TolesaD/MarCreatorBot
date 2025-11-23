@@ -112,7 +112,7 @@ async initializeBotWithWebhook(botRecord) {
     
     // Generate unique webhook URL for this bot
     const webhookPath = `/webhook/mini/${botRecord.id}`;
-    const webhookUrl = `https://yourdomain.com${webhookPath}`;
+    const webhookUrl = `https://testweb.maroset.com${webhookPath}`;
     
     console.log(`🔗 Setting webhook for ${botRecord.bot_name}: ${webhookUrl}`);
     
