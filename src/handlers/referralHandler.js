@@ -58,6 +58,41 @@ class ReferralHandler {
     }
   }
 
+  // Add this method to your ReferralHandler.js file
+static async processCurrencySetting(ctx, botId, input) {
+  try {
+    const session = this.referralSessions?.get(ctx.from.id);
+    if (!session || session.botId != botId) {
+      return false;
+    }
+
+    if (input === '/cancel') {
+      this.referralSessions.delete(ctx.from.id);
+      await ctx.reply('❌ Currency setting cancelled.');
+      return true;
+    }
+
+    const newCurrency = input.toUpperCase().trim();
+    if (newCurrency.length < 3 || newCurrency.length > 5 || !/^[A-Z]+$/.test(newCurrency)) {
+      await ctx.reply('❌ Invalid currency code. Please enter 3-5 uppercase letters (e.g., USD, EUR, BTC).');
+      return true;
+    }
+
+    const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
+    await program.update({ currency: newCurrency });
+
+    await ctx.reply(`✅ Currency updated to ${newCurrency}!`);
+    this.referralSessions.delete(ctx.from.id);
+    
+    return true;
+
+  } catch (error) {
+    console.error('Process currency setting error:', error);
+    await ctx.reply('❌ Error processing currency setting.');
+    this.referralSessions?.delete(ctx.from.id);
+    return false;
+  }
+}
   // Generate unique referral code
   static generateReferralCode(userId, botId) {
     const timestamp = Date.now().toString(36);
@@ -474,10 +509,10 @@ class ReferralHandler {
     }
   }
 
-  // Get user referral stats
+  // Get user referral stats - FIXED: Properly calculate current balance
   static async getUserReferralStats(botId, userId) {
     try {
-      const [totalReferrals, completedReferrals, totalEarnings, pendingWithdrawals] = await Promise.all([
+      const [totalReferrals, completedReferrals, totalEarnings, pendingWithdrawals, completedWithdrawals] = await Promise.all([
         Referral.count({
           where: { 
             bot_id: botId, 
@@ -504,17 +539,30 @@ class ReferralHandler {
             user_id: userId,
             status: ['pending', 'processing']
           }
+        }),
+        Withdrawal.sum('amount', {
+          where: { 
+            bot_id: botId, 
+            user_id: userId,
+            status: 'completed'
+          }
         })
       ]);
 
       const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
-      const currentBalance = (totalEarnings || 0) - (pendingWithdrawals || 0);
+      
+      // FIXED: Calculate current balance correctly
+      // Current balance = Total earnings - (Pending withdrawals + Completed withdrawals)
+      const totalWithdrawn = (pendingWithdrawals || 0) + (completedWithdrawals || 0);
+      const currentBalance = (totalEarnings || 0) - totalWithdrawn;
 
       return {
         totalReferrals: totalReferrals || 0,
         completedReferrals: completedReferrals || 0,
         totalEarnings: totalEarnings || 0,
         currentBalance: currentBalance > 0 ? currentBalance : 0,
+        totalWithdrawn: totalWithdrawn || 0,
+        pendingWithdrawals: pendingWithdrawals || 0,
         referralRate: program?.referral_rate || 1.00,
         minWithdrawal: program?.min_withdrawal || 10.00,
         currency: program?.currency || 'USD'
@@ -527,6 +575,8 @@ class ReferralHandler {
         completedReferrals: 0,
         totalEarnings: 0,
         currentBalance: 0,
+        totalWithdrawn: 0,
+        pendingWithdrawals: 0,
         referralRate: 1.00,
         minWithdrawal: 10.00,
         currency: 'USD'
@@ -534,7 +584,7 @@ class ReferralHandler {
     }
   }
 
-  // Show referral dashboard to users
+  // Show referral dashboard to users - FIXED: Show updated balance
   static async showReferralDashboard(ctx, botId) {
     try {
       let program = await ReferralProgram.findOne({ where: { bot_id: botId } });
@@ -563,7 +613,9 @@ class ReferralHandler {
         `• Total Referrals: ${stats.totalReferrals}\n` +
         `• Completed: ${stats.completedReferrals}\n` +
         `• Total Earnings: ${program.currency} ${stats.totalEarnings.toFixed(2)}\n` +
-        `• Current Balance: ${program.currency} ${stats.currentBalance.toFixed(2)}\n\n` +
+        `• Total Withdrawn: ${program.currency} ${stats.totalWithdrawn.toFixed(2)}\n` +
+        `• Pending Withdrawals: ${program.currency} ${stats.pendingWithdrawals.toFixed(2)}\n` +
+        `• <b>Current Balance: ${program.currency} ${stats.currentBalance.toFixed(2)}</b>\n\n` +
         `<b>Quick Actions:</b>\n` +
         `• Share your referral link\n` +
         `• Track your referrals in real-time\n` +
@@ -741,7 +793,9 @@ class ReferralHandler {
         `<b>Summary:</b>\n` +
         `• Total: ${stats.totalReferrals}\n` +
         `• Completed: ${stats.completedReferrals}\n` +
-        `• Earnings: ${program.currency} ${stats.totalEarnings.toFixed(2)}\n\n`;
+        `• Earnings: ${program.currency} ${stats.totalEarnings.toFixed(2)}\n` +
+        `• Withdrawn: ${program.currency} ${stats.totalWithdrawn.toFixed(2)}\n` +
+        `• <b>Current Balance: ${program.currency} ${stats.currentBalance.toFixed(2)}</b>\n\n`;
 
       if (referrals.length === 0) {
         message += `No referrals yet. Share your link to start earning! 💰`;
@@ -798,13 +852,13 @@ class ReferralHandler {
         return;
       }
 
-      // Start withdrawal session - FIX: Ensure session is properly stored
+      // Start withdrawal session
       this.withdrawalSessions = this.withdrawalSessions || new Map();
       this.withdrawalSessions.set(ctx.from.id, {
         botId: botId,
         step: 'awaiting_withdrawal_amount',
         maxAmount: stats.currentBalance,
-        timestamp: Date.now() // Add timestamp for session management
+        timestamp: Date.now()
       });
 
       await this.safeReplyWithHTML(
@@ -828,7 +882,7 @@ class ReferralHandler {
     }
   }
 
-  // Process withdrawal amount - FIX: Improved session validation and cleanup
+  // Process withdrawal amount
   static async processWithdrawalAmount(ctx, botId, input) {
     try {
       // Clean up expired sessions first (older than 30 minutes)
@@ -940,7 +994,7 @@ class ReferralHandler {
     }
   }
 
-  // Notify bot owner about withdrawal request
+  // Notify bot owner about withdrawal request - FIXED: Better button management
   static async notifyOwnerAboutWithdrawal(botId, withdrawal, user) {
     try {
       const botInstance = require('../services/MiniBotManager').getBotInstanceByDbId(botId);
@@ -963,10 +1017,14 @@ class ReferralHandler {
         `Please contact the user to arrange payment manually.\n\n` +
         `Once payment is sent, use the button below to approve the withdrawal.`;
 
+      // FIXED: Better button layout with back button
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('✅ Approve Withdrawal', `approve_withdrawal_${withdrawal.id}`)],
-        [Markup.button.callback('❌ Reject Withdrawal', `reject_withdrawal_${withdrawal.id}`)],
-        [Markup.button.callback('📊 View All Requests', `ref_withdrawals_${botId}`)]
+        [
+          Markup.button.callback('✅ Approve', `approve_withdrawal_${withdrawal.id}`),
+          Markup.button.callback('❌ Reject', `reject_withdrawal_${withdrawal.id}`)
+        ],
+        [Markup.button.callback('📋 View All Requests', `ref_withdrawals_${botId}`)],
+        [Markup.button.callback('🔙 Back to Management', `ref_manage_${botId}`)]
       ]);
 
       await botInstance.telegram.sendMessage(
@@ -983,12 +1041,18 @@ class ReferralHandler {
     }
   }
 
-  // Approve withdrawal
+  // Approve withdrawal - FIXED: Update buttons after approval
   static async approveWithdrawal(ctx, withdrawalId) {
     try {
       const withdrawal = await Withdrawal.findByPk(withdrawalId);
       if (!withdrawal) {
         await ctx.answerCbQuery('❌ Withdrawal not found');
+        return;
+      }
+
+      // Check if already processed
+      if (withdrawal.status !== 'pending') {
+        await ctx.answerCbQuery(`❌ Withdrawal already ${withdrawal.status}`);
         return;
       }
 
@@ -1000,10 +1064,40 @@ class ReferralHandler {
 
       await ctx.answerCbQuery('✅ Withdrawal approved');
 
+      // FIXED: Update the message to show it's approved and remove buttons
+      const userInfo = withdrawal.User?.username ? 
+        `@${withdrawal.User.username}` : 
+        withdrawal.User?.first_name || `User#${withdrawal.user_id}`;
+
+      const approvedMessage = `✅ <b>Withdrawal Approved</b>\n\n` +
+        `<b>User:</b> ${userInfo}\n` +
+        `<b>Amount:</b> ${withdrawal.currency} ${withdrawal.amount}\n` +
+        `<b>Request ID:</b> ${withdrawal.id}\n` +
+        `<b>Approved by:</b> ${ctx.from.first_name}\n` +
+        `<b>Approved at:</b> ${new Date().toLocaleString()}\n\n` +
+        `This withdrawal has been successfully processed.`;
+
+      try {
+        await ctx.editMessageText(approvedMessage, {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Requests', `ref_withdrawals_${withdrawal.bot_id}`)],
+            [Markup.button.callback('🔙 Back to Management', `ref_manage_${withdrawal.bot_id}`)]
+          ])
+        });
+      } catch (editError) {
+        console.log('Message edit not possible, sending new message');
+        await ctx.reply(approvedMessage, {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Requests', `ref_withdrawals_${withdrawal.bot_id}`)],
+            [Markup.button.callback('🔙 Back to Management', `ref_manage_${withdrawal.bot_id}`)]
+          ])
+        });
+      }
+
       // Notify user about approval
       await this.notifyUserAboutWithdrawalStatus(withdrawal, 'approved');
-
-      await ctx.reply(`✅ Withdrawal #${withdrawalId} has been approved and marked as completed.`);
 
     } catch (error) {
       console.error('Approve withdrawal error:', error);
@@ -1011,12 +1105,18 @@ class ReferralHandler {
     }
   }
 
-  // Reject withdrawal
+  // Reject withdrawal - FIXED: Update buttons after rejection
   static async rejectWithdrawal(ctx, withdrawalId) {
     try {
       const withdrawal = await Withdrawal.findByPk(withdrawalId);
       if (!withdrawal) {
         await ctx.answerCbQuery('❌ Withdrawal not found');
+        return;
+      }
+
+      // Check if already processed
+      if (withdrawal.status !== 'pending') {
+        await ctx.answerCbQuery(`❌ Withdrawal already ${withdrawal.status}`);
         return;
       }
 
@@ -1028,10 +1128,40 @@ class ReferralHandler {
 
       await ctx.answerCbQuery('❌ Withdrawal rejected');
 
+      // FIXED: Update the message to show it's rejected and remove buttons
+      const userInfo = withdrawal.User?.username ? 
+        `@${withdrawal.User.username}` : 
+        withdrawal.User?.first_name || `User#${withdrawal.user_id}`;
+
+      const rejectedMessage = `❌ <b>Withdrawal Rejected</b>\n\n` +
+        `<b>User:</b> ${userInfo}\n` +
+        `<b>Amount:</b> ${withdrawal.currency} ${withdrawal.amount}\n` +
+        `<b>Request ID:</b> ${withdrawal.id}\n` +
+        `<b>Rejected by:</b> ${ctx.from.first_name}\n` +
+        `<b>Rejected at:</b> ${new Date().toLocaleString()}\n\n` +
+        `This withdrawal request has been rejected.`;
+
+      try {
+        await ctx.editMessageText(rejectedMessage, {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Requests', `ref_withdrawals_${withdrawal.bot_id}`)],
+            [Markup.button.callback('🔙 Back to Management', `ref_manage_${withdrawal.bot_id}`)]
+          ])
+        });
+      } catch (editError) {
+        console.log('Message edit not possible, sending new message');
+        await ctx.reply(rejectedMessage, {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Requests', `ref_withdrawals_${withdrawal.bot_id}`)],
+            [Markup.button.callback('🔙 Back to Management', `ref_manage_${withdrawal.bot_id}`)]
+          ])
+        });
+      }
+
       // Notify user about rejection
       await this.notifyUserAboutWithdrawalStatus(withdrawal, 'rejected');
-
-      await ctx.reply(`❌ Withdrawal #${withdrawalId} has been rejected.`);
 
     } catch (error) {
       console.error('Reject withdrawal error:', error);
@@ -1076,7 +1206,7 @@ class ReferralHandler {
     }
   }
 
-  // Admin: Show referral program management
+  // Admin: Show referral program management - FIXED: Show updated stats
   static async showReferralManagement(ctx, botId) {
     try {
       let program = await ReferralProgram.findOne({ where: { bot_id: botId } });
@@ -1097,7 +1227,8 @@ class ReferralHandler {
           `• Total Referrals: ${stats.totalReferrals}\n` +
           `• Completed: ${stats.completedReferrals}\n` +
           `• Total Paid Out: ${program.currency} ${stats.totalPaid.toFixed(2)}\n` +
-          `• Pending Withdrawals: ${program.currency} ${stats.pendingWithdrawals.toFixed(2)}\n\n`;
+          `• Pending Withdrawals: ${program.currency} ${stats.pendingWithdrawals.toFixed(2)}\n` +
+          `• Active Users: ${stats.activeUsers}\n\n`;
       } else {
         message += `⚠️ Referral program not configured.\n\n`;
       }
@@ -1165,33 +1296,40 @@ class ReferralHandler {
     }
   }
 
-  // Get program-wide stats
+  // Get program-wide stats - FIXED: Add active users count
   static async getProgramStats(botId) {
     try {
-      const [totalReferrals, completedReferrals, totalPaid, pendingWithdrawals] = await Promise.all([
+      const [totalReferrals, completedReferrals, totalPaid, pendingWithdrawals, activeUsers] = await Promise.all([
         Referral.count({ where: { bot_id: botId } }),
         Referral.count({ where: { bot_id: botId, is_completed: true } }),
         Referral.sum('amount_earned', { where: { bot_id: botId, is_completed: true } }),
-        Withdrawal.sum('amount', { where: { bot_id: botId, status: ['pending', 'processing'] } })
+        Withdrawal.sum('amount', { where: { bot_id: botId, status: ['pending', 'processing'] } }),
+        Referral.count({ 
+          where: { bot_id: botId },
+          distinct: true,
+          col: 'referrer_id'
+        })
       ]);
 
       return {
         totalReferrals: totalReferrals || 0,
         completedReferrals: completedReferrals || 0,
         totalPaid: totalPaid || 0,
-        pendingWithdrawals: pendingWithdrawals || 0
+        pendingWithdrawals: pendingWithdrawals || 0,
+        activeUsers: activeUsers || 0
       };
     } catch (error) {
       return {
         totalReferrals: 0,
         completedReferrals: 0,
         totalPaid: 0,
-        pendingWithdrawals: 0
+        pendingWithdrawals: 0,
+        activeUsers: 0
       };
     }
   }
 
-  // Process text input for withdrawal amounts - FIX: Better session detection
+  // Process text input for withdrawal amounts
   static async processWithdrawalTextInput(ctx, botId, input) {
     try {
       // Clean up expired sessions first

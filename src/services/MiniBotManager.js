@@ -19,6 +19,10 @@ class MiniBotManager {
     this.messageFlowSessions = new Map();
     this.welcomeMessageSessions = new Map();
     
+    // ADD THESE MISSING SESSION MAPS:
+    this.referralSessions = new Map();
+    this.currencySessions = new Map();
+    
     // Environment detection
     this.isDevelopment = process.env.NODE_ENV === 'development' || 
                         process.env.NODE_ENV === 'dev' || 
@@ -1699,28 +1703,29 @@ handleTextMessage = async (ctx) => {
   };
   
   showAdmins = async (ctx, botId) => {
-    try {
-      const admins = await Admin.findAll({
-        where: { bot_id: botId },
-        include: [{ model: User, as: 'User' }]
-      });
+  try {
+    const admins = await Admin.findAll({
+      where: { bot_id: botId },
+      include: [{ model: User, as: 'AdminUser' }] // CHANGE 'User' to 'AdminUser'
+    });
+
+    const bot = await Bot.findByPk(botId);
+
+    let message = `👥 *Admin Management*\n\n` +
+      `*Total Admins:* ${admins.length}\n\n` +
+      `*Current Admins:*\n`;
+    
+    admins.forEach((admin, index) => {
+      // UPDATE THIS LINE TO USE AdminUser INSTEAD OF User
+      const userInfo = admin.AdminUser ? 
+        `@${admin.AdminUser.username} (${admin.AdminUser.first_name})` : 
+        `User#${admin.admin_user_id}`;
       
-      const bot = await Bot.findByPk(botId);
+      const isOwner = admin.admin_user_id === bot.owner_id;
       
-      let message = `👥 *Admin Management*\n\n` +
-        `*Total Admins:* ${admins.length}\n\n` +
-        `*Current Admins:*\n`;
-      
-      admins.forEach((admin, index) => {
-        const userInfo = admin.User ? 
-          `@${admin.User.username} (${admin.User.first_name})` : 
-          `User#${admin.admin_user_id}`;
-        
-        const isOwner = admin.admin_user_id === bot.owner_id;
-        
-        message += `*${index + 1}.* ${userInfo} ${isOwner ? '👑 (Owner)' : ''}\n`;
-      });
-      
+      message += `*${index + 1}.* ${userInfo} ${isOwner ? '👑 (Owner)' : ''}\n`;
+    });
+    
       const keyboardButtons = [];
       
       admins.filter(admin => admin.admin_user_id !== bot.owner_id).forEach(admin => {
