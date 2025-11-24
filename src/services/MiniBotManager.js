@@ -1891,10 +1891,13 @@ handleTextMessage = async (ctx) => {
     try {
       console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
       
-      const admins = await Admin.findAll({
-        where: { bot_id: botId },
-        include: [{ model: User, as: 'User' }]
-      });
+  const admins = await Admin.findAll({
+  where: { botId: this.bot.id },
+  include: [{
+    model: User,
+    as: 'users' // Use the correct alias from your association
+  }]
+});
       
       const bot = await Bot.findByPk(botId);
       
