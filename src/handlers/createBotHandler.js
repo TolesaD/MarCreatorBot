@@ -45,7 +45,7 @@ const createBotHandler = async (ctx) => {
       `3. Follow the instructions\n` +
       `4. Copy the token and paste here\n\n` +
       `*Format:* \`1234567890:ABCdefGHIjklMNOPQRSTuvwXYZ123456\`\n\n` +
-      `*Security Note:* 🔒 Your token is encrypted and stored securely.\n\n`+
+      `*Security Note:* 🔒 Your token is encrypted and secured.\n\n`+
       `To cancel this process, type /cancel here below.`;
 
     await ctx.replyWithMarkdown(message, Markup.removeKeyboard());

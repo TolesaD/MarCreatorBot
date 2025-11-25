@@ -28,8 +28,8 @@ class MiniBotManager {
                         process.env.DEV_MODE === 'true';
     
     // Bot identification based on environment
-    this.mainBotUsername = this.isDevelopment ? 'MarCreatorDevBot' : 'MarCreatorBot';
-    this.mainBotDisplayName = this.isDevelopment ? '🤖 MarCreator DEV' : '🤖 MarCreator';
+    this.mainBotUsername = this.isDevelopment ? 'BotomicsDevBot' : 'BotomicsBot';
+    this.mainBotDisplayName = this.isDevelopment ? '🤖 Botomics DEV' : '🤖 Botomics';
     
     console.log(`🚀 MiniBotManager initialized for ${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'} environment`);
     console.log(`🔍 Using main bot: @${this.mainBotUsername}`);
@@ -43,7 +43,7 @@ class MiniBotManager {
       displayName: this.mainBotDisplayName,
       fullName: `${botName}${envSuffix}`,
       isDevelopment: this.isDevelopment,
-      supportBot: this.isDevelopment ? 'MarCreatorDevSupportBot' : 'MarCreatorSupportBot'
+      supportBot: this.isDevelopment ? 'BotomicsDevSupportBot' : 'BotomicsSupportBot'
     };
   }
   
@@ -746,7 +746,7 @@ try {
       
       // For custom messages, append the creator credit if it's not already there
       const creatorCredit = `_This Bot is created by @${botRef.username}_`;
-      if (!welcomeMessage.includes(botRef.username) && !welcomeMessage.includes('MarCreatorBot')) {
+      if (!welcomeMessage.includes(botRef.username) && !welcomeMessage.includes('BotomicsBot')) {
         welcomeMessage += `\n\n${creatorCredit}`;
       }
       

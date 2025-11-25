@@ -15,7 +15,7 @@ const startHandler = async (ctx) => {
       last_active: new Date()
     });
 
-    const welcomeMessage = `🤖 *Welcome to MarCreator!*\n\n` +
+    const welcomeMessage = `🤖 *Welcome to Botomics!*\n\n` +
       `*The Ultimate Telegram Bot Management Platform*\n\n` +
       `✨ *Create & Manage Your Own Bots:*\n` +
       `• 🚀 Create mini-bots without coding\n` +
@@ -44,7 +44,7 @@ const startHandler = async (ctx) => {
         Markup.button.callback('🔒 Privacy', 'privacy_policy'),
         Markup.button.callback('📋 Terms', 'terms_of_service')
       ],
-      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/MarCreator')]
+      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/Botomics')]
     ]);
 
     if (ctx.updateType === 'callback_query') {
@@ -63,7 +63,7 @@ const startHandler = async (ctx) => {
     // Fallback
     try {
       await ctx.reply(
-        `🤖 Welcome to MarCreator!\n\n` +
+        `🤖 Welcome to Botomics!\n\n` +
         `Create and manage Telegram bots without coding.\n\n` +
         `All management happens in your mini-bots!\n\n` +
         `Legal: /privacy & /terms\n\n` +
@@ -72,13 +72,13 @@ const startHandler = async (ctx) => {
           [Markup.button.callback('🚀 Create Bot', 'create_bot')],
           [Markup.button.callback('📊 My Bots', 'my_bots')],
           [Markup.button.callback('❓ Help', 'help')],
-          [Markup.button.url('📺 Tutorials', 'https://t.me/MarCreator')]
+          [Markup.button.url('📺 Tutorials', 'https://t.me/Botomics')]
         ])
       );
     } catch (fallbackError) {
       console.error('Fallback also failed:', fallbackError);
       await ctx.reply(
-        'Welcome to MarCreatorBot! Use /createbot to make a bot.'
+        'Welcome to BotomicsBot! Use /createbot to make a bot.'
       );
     }
   }
@@ -86,7 +86,7 @@ const startHandler = async (ctx) => {
 
 const helpHandler = async (ctx) => {
   try {
-    const helpMessage = `📖 *MarCreator - Complete Help Guide*\n\n` +
+    const helpMessage = `📖 *Botomics - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
       `1. Create bot via @BotFather\n` +
       `2. Use /createbot to add it here\n` +
@@ -141,7 +141,7 @@ const helpHandler = async (ctx) => {
       `/privacy - View Privacy Policy\n` +
       `/terms - View Terms of Service\n` +
       `*Contact:*\n` +
-      `Questions? Contact @MarCreatorSupportBot\n\n` +
+      `Questions? Contact @BotomicsSupportBot\n\n` +
       `*🚀 Ready to create amazing bots?*`;
 
     const keyboard = Markup.inlineKeyboard([
@@ -168,7 +168,7 @@ const helpHandler = async (ctx) => {
   } catch (error) {
     console.error('Help handler error:', error);
     await ctx.reply(
-      `🤖 MarCreator Help\n\n` +
+      `🤖 Botomics Help\n\n` +
       `Main Commands:\n` +
       `/start - Main menu\n` +
       `/createbot - Create bot\n` +
@@ -191,7 +191,7 @@ const helpHandler = async (ctx) => {
 
 const featuresHandler = async (ctx) => {
   try {
-    const featuresMessage = `⭐ *MarCreator - Complete Features List*\n\n` +
+    const featuresMessage = `⭐ *Botomics - Complete Features List*\n\n` +
       `*🤖 Bot Creation & Management:*\n` +
       `• Create unlimited mini-bots\n` +
       `• No coding knowledge required\n` +
@@ -294,7 +294,7 @@ const featuresHandler = async (ctx) => {
   } catch (error) {
     console.error('Features handler error:', error);
     await ctx.reply(
-      `⭐ MarCreator Features\n\n` +
+      `⭐ Botomics Features\n\n` +
       `• Create mini-bots\n` +
       `• Real-time messaging\n` +
       `• Broadcast system\n` +
@@ -316,7 +316,7 @@ const featuresHandler = async (ctx) => {
 // Default handler for any unrecognized messages
 const defaultHandler = async (ctx) => {
   try {
-    const message = `🤖 *MarCreatorBot*\n\n` +
+    const message = `🤖 *BotomicsBot*\n\n` +
       `I see you sent a message. Here's how I can help you:\n\n` +
       `*Quick Actions:*\n` +
       `• Create and manage Telegram bots\n` +
