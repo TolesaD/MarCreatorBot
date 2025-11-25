@@ -304,13 +304,13 @@ class MetaBotCreator {
   
   privacyHandler = async (ctx) => {
     try {
-      const privacyMessage = `🔒 *Privacy Policy - MarCreator*\n\n` +
+      const privacyMessage = `🔒 *Privacy Policy - Botomics*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
-        `*What MarCreator Collect:*\n` +
+        `*What Botomics Collect:*\n` +
         `• Basic profile info\n` +
         `• Data for bot functionality\n` +
         `• Usage statistics for service improvement\n\n` +
-        `*How MarCreator Use The Data:*\n` +
+        `*How Botomics Use The Data:*\n` +
         `• To operate and maintain your mini-bots\n` +
         `• To forward messages between users and admins\n` +
         `• To provide bot management features\n` +
@@ -320,7 +320,7 @@ class MetaBotCreator {
         `• Database connections use SSL/TLS\n` +
         `• Regular security updates\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @MarCreatorSupportBot\n\n` +
+        `Questions? Contact @BotomicsSupportBot\n\n` +
         `By using this service, you agree to our privacy practices.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -341,7 +341,7 @@ class MetaBotCreator {
       await ctx.reply(
         `🔒 Privacy Policy\n\n` +
         `We protect your data. We collect only necessary information to provide the service.\n\n` +
-        `Contact @MarCreatorSupportBot for concerns.`,
+        `Contact @BotomicsSupportBot for concerns.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -351,12 +351,12 @@ class MetaBotCreator {
 
   termsHandler = async (ctx) => {
     try {
-      const termsMessage = `📋 *Terms of Service - MarCreator*\n\n` +
+      const termsMessage = `📋 *Terms of Service - Botomics*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*Acceptance of Terms:*\n` +
-        `By using MarCreator, you agree to these Terms of Service.\n\n` +
+        `By using Botomics, you agree to these Terms of Service.\n\n` +
         `*Service Description:*\n` +
-        `MarCreator allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
+        `Botomics allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
         `*User Responsibilities:*\n` +
         `• You must own or have permission to use bot tokens\n` +
         `• You are responsible for your mini-bots' actions\n` +
@@ -386,7 +386,7 @@ class MetaBotCreator {
         `*Changes to Terms:*\n` +
         `We may update these terms with reasonable notice.\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @MarCreatorSupportBot\n\n` +
+        `Questions? Contact @BotomicsSupportBot\n\n` +
         `By using this service, you agree to these terms.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -407,7 +407,7 @@ class MetaBotCreator {
       await ctx.reply(
         `📋 Terms of Service\n\n` +
         `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-        `Contact @MarCreatorSupportBot for questions.`,
+        `Contact @BotomicsSupportBot for questions.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
