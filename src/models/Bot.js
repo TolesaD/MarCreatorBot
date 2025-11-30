@@ -44,6 +44,39 @@ const Bot = sequelize.define('Bot', {
   updated_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  // Add to Bot model after existing fields
+  niche_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  is_ad_approved: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  ad_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.10
+  },
+  last_price_change: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  total_ad_revenue: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0.00
+  },
+  user_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  has_donation_enabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  pinned_start_message: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'bots',

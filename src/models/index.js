@@ -1,4 +1,6 @@
 const { sequelize } = require('../../database/db');
+
+// Core models (should always exist)
 const User = require('./User');
 const Bot = require('./Bot');
 const Admin = require('./Admin');
@@ -6,14 +8,55 @@ const Feedback = require('./Feedback');
 const UserLog = require('./UserLog');
 const BroadcastHistory = require('./BroadcastHistory');
 
-// NEW MODELS
-const ChannelJoin = require('./ChannelJoin');
-const ReferralProgram = require('./ReferralProgram');
-const Referral = require('./Referral');
-const Withdrawal = require('./Withdrawal');
-const UserBan = require('./UserBan');
+// Extended models (might be missing initially)
+let ChannelJoin, ReferralProgram, Referral, Withdrawal, UserBan;
 
-// Define associations
+try {
+  ChannelJoin = require('./ChannelJoin');
+} catch (error) {
+  console.log('⚠️ ChannelJoin model not found, creating placeholder');
+  ChannelJoin = null;
+}
+
+try {
+  ReferralProgram = require('./ReferralProgram');
+} catch (error) {
+  console.log('⚠️ ReferralProgram model not found, creating placeholder');
+  ReferralProgram = null;
+}
+
+try {
+  Referral = require('./Referral');
+} catch (error) {
+  console.log('⚠️ Referral model not found, creating placeholder');
+  Referral = null;
+}
+
+try {
+  Withdrawal = require('./Withdrawal');
+} catch (error) {
+  console.log('⚠️ Withdrawal model not found, creating placeholder');
+  Withdrawal = null;
+}
+
+try {
+  UserBan = require('./UserBan');
+} catch (error) {
+  console.log('⚠️ UserBan model not found, creating placeholder');
+  UserBan = null;
+}
+
+// Botomics models
+const Wallet = require('./Wallet');
+const WalletTransaction = require('./WalletTransaction');
+const UserSubscription = require('./UserSubscription');
+const BotNiche = require('./BotNiche');
+const BotAdSettings = require('./BotAdSettings');
+const AdCampaign = require('./AdCampaign');
+const AdEvent = require('./AdEvent');
+const PlatformSettings = require('./PlatformSettings');
+
+// Define associations for core models
 
 // Bot belongs to User (owner)
 Bot.belongsTo(User, { 
@@ -32,13 +75,13 @@ User.hasMany(Bot, {
 // Admin associations
 Admin.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
-  as: 'AdminBot'  // Changed from 'Bot' to 'AdminBot'
+  as: 'AdminBot'
 });
 
 Admin.belongsTo(User, { 
   foreignKey: 'admin_user_id', 
   targetKey: 'telegram_id', 
-  as: 'AdminUser'  // Changed from 'User' to 'AdminUser'
+  as: 'AdminUser'
 });
 
 Bot.hasMany(Admin, { 
@@ -55,7 +98,7 @@ User.hasMany(Admin, {
 // Feedback associations
 Feedback.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
-  as: 'FeedbackBot'  // Changed from 'Bot' to 'FeedbackBot'
+  as: 'FeedbackBot'
 });
 
 Bot.hasMany(Feedback, { 
@@ -66,13 +109,13 @@ Bot.hasMany(Feedback, {
 Feedback.belongsTo(User, {
   foreignKey: 'replied_by',
   targetKey: 'telegram_id',
-  as: 'FeedbackReplier'  // Changed from 'Replier' to 'FeedbackReplier'
+  as: 'FeedbackReplier'
 });
 
 // UserLog associations
 UserLog.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
-  as: 'UserLogBot'  // Changed from 'Bot' to 'UserLogBot'
+  as: 'UserLogBot'
 });
 
 Bot.hasMany(UserLog, { 
@@ -83,7 +126,7 @@ Bot.hasMany(UserLog, {
 // BroadcastHistory associations
 BroadcastHistory.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
-  as: 'BroadcastBot'  // Changed from 'Bot' to 'BroadcastBot'
+  as: 'BroadcastBot'
 });
 
 Bot.hasMany(BroadcastHistory, { 
@@ -94,107 +137,154 @@ Bot.hasMany(BroadcastHistory, {
 BroadcastHistory.belongsTo(User, {
   foreignKey: 'sent_by',
   targetKey: 'telegram_id',
-  as: 'BroadcastSender'  // Changed from 'Sender' to 'BroadcastSender'
+  as: 'BroadcastSender'
 });
 
-// NEW ASSOCIATIONS
-
-// ChannelJoin associations
-ChannelJoin.belongsTo(Bot, { 
-  foreignKey: 'bot_id', 
-  as: 'ChannelBot'  // Changed from 'Bot' to 'ChannelBot'
-});
-
-Bot.hasMany(ChannelJoin, { 
-  foreignKey: 'bot_id', 
-  as: 'ChannelJoins' 
-});
-
-// ReferralProgram associations
-ReferralProgram.belongsTo(Bot, { 
-  foreignKey: 'bot_id', 
-  as: 'ReferralProgramBot'  // Changed from 'Bot' to 'ReferralProgramBot'
-});
-
-Bot.hasOne(ReferralProgram, { 
-  foreignKey: 'bot_id', 
-  as: 'ReferralProgram' 
-});
-
-// Referral associations
-Referral.belongsTo(Bot, { 
-  foreignKey: 'bot_id', 
-  as: 'ReferralBot'  // Changed from 'Bot' to 'ReferralBot'
-});
-
-Bot.hasMany(Referral, { 
-  foreignKey: 'bot_id', 
-  as: 'Referrals' 
-});
-
-Referral.belongsTo(User, {
-  foreignKey: 'referrer_id',
-  targetKey: 'telegram_id',
-  as: 'ReferralReferrer'  // Changed from 'Referrer' to 'ReferralReferrer'
-});
-
-Referral.belongsTo(User, {
-  foreignKey: 'referred_id',
-  targetKey: 'telegram_id',
-  as: 'ReferralReferred'  // Changed from 'ReferredUser' to 'ReferralReferred'
-});
-
-// Withdrawal associations
-Withdrawal.belongsTo(Bot, { 
-  foreignKey: 'bot_id', 
-  as: 'WithdrawalBot'  // Changed from 'Bot' to 'WithdrawalBot'
-});
-
-Bot.hasMany(Withdrawal, { 
-  foreignKey: 'bot_id', 
-  as: 'Withdrawals' 
-});
-
-Withdrawal.belongsTo(User, {
+// Botomics associations
+Wallet.belongsTo(User, {
   foreignKey: 'user_id',
   targetKey: 'telegram_id',
-  as: 'WithdrawalUser'  // Changed from 'User' to 'WithdrawalUser'
+  as: 'WalletUser'
 });
 
-Withdrawal.belongsTo(User, {
-  foreignKey: 'processed_by',
-  targetKey: 'telegram_id',
-  as: 'WithdrawalProcessor'  // Changed from 'Processor' to 'WithdrawalProcessor'
+WalletTransaction.belongsTo(Wallet, {
+  foreignKey: 'wallet_id',
+  as: 'TransactionWallet'
 });
 
-// UserBan associations
-UserBan.belongsTo(Bot, { 
-  foreignKey: 'bot_id', 
-  as: 'BanBot'  // Changed from 'Bot' to 'BanBot'
-});
-
-Bot.hasMany(UserBan, { 
-  foreignKey: 'bot_id', 
-  as: 'UserBans' 
-});
-
-UserBan.belongsTo(User, {
+UserSubscription.belongsTo(User, {
   foreignKey: 'user_id',
   targetKey: 'telegram_id',
-  as: 'BannedUser'  // Changed from 'User' to 'BannedUser'
+  as: 'SubscriptionUser'
 });
 
-UserBan.belongsTo(User, {
-  foreignKey: 'banned_by',
-  targetKey: 'telegram_id',
-  as: 'BanInitiator'  // Changed from 'BannedBy' to 'BanInitiator'
+BotAdSettings.belongsTo(Bot, {
+  foreignKey: 'bot_id',
+  as: 'AdSettingsBot'
 });
 
-UserBan.belongsTo(User, {
-  foreignKey: 'unbanned_by',
-  targetKey: 'telegram_id',
-  as: 'UnbanInitiator'  // Changed from 'UnbannedBy' to 'UnbanInitiator'
+BotAdSettings.belongsTo(BotNiche, {
+  foreignKey: 'niche_id',
+  as: 'BotNiche'
 });
+
+AdCampaign.belongsTo(Bot, {
+  foreignKey: 'bot_id',
+  as: 'CampaignBot'
+});
+
+AdEvent.belongsTo(AdCampaign, {
+  foreignKey: 'campaign_id',
+  as: 'EventCampaign'
+});
+
+AdEvent.belongsTo(Bot, {
+  foreignKey: 'bot_id',
+  as: 'EventBot'
+});
+
+// Conditionally define associations for extended models
+if (ChannelJoin) {
+  ChannelJoin.belongsTo(Bot, { 
+    foreignKey: 'bot_id', 
+    as: 'ChannelBot'
+  });
+
+  Bot.hasMany(ChannelJoin, { 
+    foreignKey: 'bot_id', 
+    as: 'ChannelJoins' 
+  });
+}
+
+if (ReferralProgram) {
+  ReferralProgram.belongsTo(Bot, { 
+    foreignKey: 'bot_id', 
+    as: 'ReferralProgramBot'
+  });
+
+  Bot.hasOne(ReferralProgram, { 
+    foreignKey: 'bot_id', 
+    as: 'ReferralProgram' 
+  });
+}
+
+if (Referral) {
+  Referral.belongsTo(Bot, { 
+    foreignKey: 'bot_id', 
+    as: 'ReferralBot'
+  });
+
+  Bot.hasMany(Referral, { 
+    foreignKey: 'bot_id', 
+    as: 'Referrals' 
+  });
+
+  Referral.belongsTo(User, {
+    foreignKey: 'referrer_id',
+    targetKey: 'telegram_id',
+    as: 'ReferralReferrer'
+  });
+
+  Referral.belongsTo(User, {
+    foreignKey: 'referred_id',
+    targetKey: 'telegram_id',
+    as: 'ReferralReferred'
+  });
+}
+
+if (Withdrawal) {
+  Withdrawal.belongsTo(Bot, { 
+    foreignKey: 'bot_id', 
+    as: 'WithdrawalBot'
+  });
+
+  Bot.hasMany(Withdrawal, { 
+    foreignKey: 'bot_id', 
+    as: 'Withdrawals' 
+  });
+
+  Withdrawal.belongsTo(User, {
+    foreignKey: 'user_id',
+    targetKey: 'telegram_id',
+    as: 'WithdrawalUser'
+  });
+
+  Withdrawal.belongsTo(User, {
+    foreignKey: 'processed_by',
+    targetKey: 'telegram_id',
+    as: 'WithdrawalProcessor'
+  });
+}
+
+if (UserBan) {
+  UserBan.belongsTo(Bot, { 
+    foreignKey: 'bot_id', 
+    as: 'BanBot'
+  });
+
+  Bot.hasMany(UserBan, { 
+    foreignKey: 'bot_id', 
+    as: 'UserBans' 
+  });
+
+  UserBan.belongsTo(User, {
+    foreignKey: 'user_id',
+    targetKey: 'telegram_id',
+    as: 'BannedUser'
+  });
+
+  UserBan.belongsTo(User, {
+    foreignKey: 'banned_by',
+    targetKey: 'telegram_id',
+    as: 'BanInitiator'
+  });
+
+  UserBan.belongsTo(User, {
+    foreignKey: 'unbanned_by',
+    targetKey: 'telegram_id',
+    as: 'UnbanInitiator'
+  });
+}
 
 module.exports = {
   sequelize,
@@ -204,10 +294,18 @@ module.exports = {
   Feedback,
   UserLog,
   BroadcastHistory,
-  // NEW MODELS
   ChannelJoin,
   ReferralProgram,
   Referral,
   Withdrawal,
-  UserBan
+  UserBan,
+  // Botomics models
+  Wallet,
+  WalletTransaction,
+  UserSubscription,
+  BotNiche,
+  BotAdSettings,
+  AdCampaign,
+  AdEvent,
+  PlatformSettings
 };

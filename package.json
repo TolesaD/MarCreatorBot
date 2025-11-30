@@ -5,7 +5,6 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "set NODE_ENV=development&& nodemon src/app.js",
     "start:dev": "set NODE_ENV=development&& node src/app.js",
     "start:prod": "set NODE_ENV=production&& node src/app.js",
     "test": "set NODE_ENV=test&& node test-local.js",
@@ -20,8 +19,15 @@
     "env:dev": "node scripts/switch-env.js development",
     "env:prod": "node scripts/switch-env.js production",
     "migrate:advanced": "node scripts/create_advanced_tables.js",
-    "migrate:all": "npm run migrate:advanced",
-    "setup:complete": "npm run migrate:all && npm run set-commands"
+    "migrate:all": "npm run migrate:advanced && npm run migrate:new-features",
+    "setup:complete": "npm run migrate:all && npm run set-commands",
+    "dev": "set NODE_ENV=development&& nodemon src/app.js",
+    "test:new-features": "set NODE_ENV=development&& node test-new-features.js",
+    "migrate:new-features": "set NODE_ENV=development&& node scripts/create_new_features_tables.js",
+    "setup:test": "npm run migrate:new-features && npm run test:new-features",
+    "setup:botomics": "node src/scripts/setup_botomics.js",
+    "deploy:complete": "npm run migrate:all && npm run setup:botomics && npm run set-commands",
+    "cron:daily": "node src/scripts/daily_maintenance.js"
   },
   "keywords": [
     "telegram",

@@ -59,22 +59,4 @@ const Referral = sequelize.define('Referral', {
   ]
 });
 
-// Associations
-Referral.belongsTo(require('./Bot'), { 
-  foreignKey: 'bot_id', 
-  as: 'Bot' 
-});
-
-Referral.belongsTo(require('./User'), {
-  foreignKey: 'referrer_id',
-  targetKey: 'telegram_id',
-  as: 'Referrer'
-});
-
-Referral.belongsTo(require('./User'), {
-  foreignKey: 'referred_id',
-  targetKey: 'telegram_id',
-  as: 'ReferredUser'
-});
-
 module.exports = Referral;

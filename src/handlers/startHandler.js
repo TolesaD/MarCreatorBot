@@ -34,17 +34,14 @@ const startHandler = async (ctx) => {
       `/terms - Terms of Service\n` +
       `/privacy - Privacy Policy`;
 
+    // In the startHandler function, update the keyboard to include:
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
-      [
-        Markup.button.callback('❓ Help Guide', 'help'),
-        Markup.button.callback('⭐ Features', 'features')
-      ],
-      [
-        Markup.button.callback('🔒 Privacy', 'privacy_policy'),
-        Markup.button.callback('📋 Terms', 'terms_of_service')
-      ],
-      [Markup.button.url('📺 Tutorials & Updates', 'https://t.me/Botomics')]
+      [Markup.button.callback('🚀 Create Bot', 'create_bot')],
+      [Markup.button.callback('🤖 My Bots', 'my_bots')],
+      [Markup.button.callback('💰 Wallet', 'wallet_main')],
+      [Markup.button.callback('🎫 Premium', 'subscribe_premium')],
+      [Markup.button.callback('❓ Help', 'help')],
+      [Markup.button.callback('⭐ Features', 'features')]
     ]);
 
     if (ctx.updateType === 'callback_query') {
