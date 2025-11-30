@@ -192,7 +192,7 @@ class MetaBotCreator {
     menu_button: {
       type: 'web_app',
       text: '💰 Botomics Wallet',
-      web_app: { url: 'https://your-domain.com/wallet' } // CHANGE TO YOUR ACTUAL URL
+      web_app: { url: 'https://testweb.maroset.com/wallet' } // CHANGE TO YOUR ACTUAL URL
     }
   });
   

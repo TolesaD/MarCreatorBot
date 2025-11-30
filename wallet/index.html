@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botomics Wallet</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>💰 Botomics Wallet</h1>
+            <div class="user-info" id="userInfo">
+                <span>Loading...</span>
+            </div>
+        </header>
+
+        <!-- Balance Card -->
+        <div class="card balance-card">
+            <div class="balance-header">
+                <h2>Your Balance</h2>
+                <button class="refresh-btn" onclick="loadBalance()">🔄</button>
+            </div>
+            <div class="balance-amount" id="balanceAmount">
+                <div class="loading">Loading balance...</div>
+            </div>
+            <div class="balance-details">
+                <div class="currency-rate">1 BOM = $1.00 USD</div>
+                <div class="wallet-status" id="walletStatus"></div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <div class="action-grid">
+                <button class="action-btn" onclick="showDeposit()">
+                    <span class="icon">💳</span>
+                    <span>Deposit</span>
+                </button>
+                <button class="action-btn" onclick="showWithdraw()">
+                    <span class="icon">📤</span>
+                    <span>Withdraw</span>
+                </button>
+                <button class="action-btn" onclick="showHistory()">
+                    <span class="icon">🔄</span>
+                    <span>History</span>
+                </button>
+                <button class="action-btn" onclick="showPremium()">
+                    <span class="icon">🎫</span>
+                    <span>Premium</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Deposit Section -->
+        <div class="card deposit-section" id="depositSection" style="display: none;">
+            <h3>💳 Deposit BOM</h3>
+            <div class="deposit-info">
+                <p><strong>Minimum Deposit:</strong> 5 BOM ($5.00)</p>
+                <p><strong>Processing Time:</strong> 1-6 hours</p>
+                <p><strong>Rate:</strong> 1 BOM = $1.00 USD</p>
+            </div>
+            <div class="instructions">
+                <h4>How to Deposit:</h4>
+                <ol>
+                    <li>Send payment to our platform address</li>
+                    <li>Submit transaction proof for verification</li>
+                    <li>Coins will be added after verification</li>
+                </ol>
+            </div>
+            <button class="btn-primary" onclick="contactSupport()">
+                📞 Contact Support for Payment Details
+            </button>
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Withdraw Section -->
+        <div class="card withdraw-section" id="withdrawSection" style="display: none;">
+            <h3>📤 Withdraw BOM</h3>
+            <div class="withdraw-info">
+                <p><strong>Minimum Withdrawal:</strong> 20 BOM ($20.00)</p>
+                <p><strong>Processing Time:</strong> 24 hours</p>
+                <p><strong>Available Methods:</strong> PayPal, Bank Transfer, Crypto</p>
+            </div>
+            <div class="withdraw-form">
+                <label for="withdrawAmount">Amount to Withdraw (BOM):</label>
+                <input type="number" id="withdrawAmount" placeholder="Enter amount" min="20" step="1">
+                <button class="btn-primary" onclick="submitWithdrawal()">
+                    💰 Request Withdrawal
+                </button>
+            </div>
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Transaction History -->
+        <div class="card history-section" id="historySection" style="display: none;">
+            <h3>🔄 Transaction History</h3>
+            <div class="history-controls">
+                <button class="btn-small" onclick="loadHistory(0)">Latest</button>
+                <button class="btn-small" onclick="loadHistory(1)">Older</button>
+            </div>
+            <div class="transactions-list" id="transactionsList">
+                <div class="loading">Loading transactions...</div>
+            </div>
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Premium Section -->
+        <div class="card premium-section" id="premiumSection" style="display: none;">
+            <h3>🎫 Premium Subscription</h3>
+            <div class="premium-info">
+                <div class="current-tier" id="currentTier">
+                    Loading subscription status...
+                </div>
+                <div class="premium-benefits">
+                    <h4>Premium Benefits:</h4>
+                    <ul>
+                        <li>✅ Unlimited bot creation</li>
+                        <li>✅ Unlimited broadcasts</li>
+                        <li>✅ Unlimited co-admins</li>
+                        <li>✅ Unlimited force-join channels</li>
+                        <li>✅ Enable donation system</li>
+                        <li>✅ Pin /start message</li>
+                        <li>✅ Ad-free experience</li>
+                        <li>✅ Priority support</li>
+                    </ul>
+                </div>
+                <div class="pricing">
+                    <strong>Price: 5 BOM per month ($5.00)</strong>
+                </div>
+            </div>
+            <div class="premium-actions" id="premiumActions">
+                <div class="loading">Loading actions...</div>
+            </div>
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by Botomics • <a href="https://t.me/BotomicsSupport" target="_blank">Support</a></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
