@@ -21,7 +21,7 @@
         <div class="card balance-card">
             <div class="balance-header">
                 <h2>Your Balance</h2>
-                <button class="refresh-btn" onclick="loadBalance()">🔄</button>
+                <button class="refresh-btn" onclick="refreshData()">🔄</button>
             </div>
             <div class="balance-amount" id="balanceAmount">
                 <div class="loading">Loading balance...</div>
@@ -30,6 +30,9 @@
                 <div class="currency-rate">1 BOM = $1.00 USD</div>
                 <div class="wallet-status" id="walletStatus"></div>
             </div>
+            <button class="btn-small" onclick="copyWalletAddress()">
+                📋 Copy Wallet Address
+            </button>
         </div>
 
         <!-- Quick Actions -->
@@ -44,13 +47,21 @@
                     <span class="icon">📤</span>
                     <span>Withdraw</span>
                 </button>
-                <button class="action-btn" onclick="showHistory()">
+                <button class="action-btn" onclick="showTransfer()">
                     <span class="icon">🔄</span>
+                    <span>Transfer</span>
+                </button>
+                <button class="action-btn" onclick="showHistory()">
+                    <span class="icon">📊</span>
                     <span>History</span>
                 </button>
                 <button class="action-btn" onclick="showPremium()">
                     <span class="icon">🎫</span>
                     <span>Premium</span>
+                </button>
+                <button class="action-btn" onclick="contactSupport()">
+                    <span class="icon">🆘</span>
+                    <span>Support</span>
                 </button>
             </div>
         </div>
@@ -60,21 +71,50 @@
             <h3>💳 Deposit BOM</h3>
             <div class="deposit-info">
                 <p><strong>Minimum Deposit:</strong> 5 BOM ($5.00)</p>
-                <p><strong>Processing Time:</strong> 1-6 hours</p>
+                <p><strong>Processing Time:</strong> 1-6 hours after verification</p>
                 <p><strong>Rate:</strong> 1 BOM = $1.00 USD</p>
             </div>
             <div class="instructions">
                 <h4>How to Deposit:</h4>
                 <ol>
-                    <li>Send payment to our platform address</li>
-                    <li>Submit transaction proof for verification</li>
-                    <li>Coins will be added after verification</li>
+                    <li>Send $ payment to our platform address</li>
+                    <li>Take screenshot or photo of transaction proof</li>
+                    <li>Upload proof and submit for verification</li>
+                    <li>Coins will be added after admin verification</li>
                 </ol>
+                <div class="payment-address">
+                    <strong>Payment Address:</strong>
+                    <code id="paymentAddress">BOTOMICS_PLATFORM_001</code>
+                    <button class="btn-copy" onclick="copyPaymentAddress()">📋 Copy</button>
+                </div>
             </div>
-            <button class="btn-primary" onclick="contactSupport()">
-                📞 Contact Support for Payment Details
+            <button class="btn-primary" onclick="showDepositProofForm()">
+                📸 Submit Deposit Proof
             </button>
             <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Deposit Proof Section -->
+        <div class="card" id="depositProofSection" style="display: none;">
+            <h3>📸 Submit Deposit Proof</h3>
+            <div class="deposit-form">
+                <label for="depositAmount">Amount in BOM:</label>
+                <input type="number" id="depositAmount" placeholder="Enter amount" min="5" step="0.01">
+                
+                <label for="depositDescription">Description (optional):</label>
+                <input type="text" id="depositDescription" placeholder="e.g., Payment from PayPal">
+                
+                <label for="depositProof">Proof of Payment (screenshot/photo):</label>
+                <input type="file" id="depositProof" accept="image/*">
+                <small>Upload clear screenshot of your payment transaction</small>
+                
+                <button class="btn-primary" onclick="submitDepositProof()">
+                    📤 Submit for Verification
+                </button>
+            </div>
+            <button class="btn-secondary" onclick="showDeposit()">
                 🔙 Back
             </button>
         </div>
@@ -85,13 +125,76 @@
             <div class="withdraw-info">
                 <p><strong>Minimum Withdrawal:</strong> 20 BOM ($20.00)</p>
                 <p><strong>Processing Time:</strong> 24 hours</p>
-                <p><strong>Available Methods:</strong> PayPal, Bank Transfer, Crypto</p>
+                <p><strong>Available Balance:</strong> <span id="availableBalance">Loading...</span></p>
             </div>
+            <div class="withdraw-methods">
+                <h4>Select Withdrawal Method:</h4>
+                <div class="method-grid">
+                    <button class="method-btn" onclick="showWithdrawRequestForm('paypal')">
+                        <span class="method-icon">💼</span>
+                        <span>PayPal</span>
+                    </button>
+                    <button class="method-btn" onclick="showWithdrawRequestForm('bank_transfer')">
+                        <span class="method-icon">🏦</span>
+                        <span>Bank Transfer</span>
+                    </button>
+                    <button class="method-btn" onclick="showWithdrawRequestForm('crypto')">
+                        <span class="method-icon">₿</span>
+                        <span>Crypto</span>
+                    </button>
+                </div>
+            </div>
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Withdraw Request Section -->
+        <div class="card" id="withdrawRequestSection" style="display: none;">
+            <h3>📤 Request Withdrawal</h3>
             <div class="withdraw-form">
-                <label for="withdrawAmount">Amount to Withdraw (BOM):</label>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount" min="20" step="1">
-                <button class="btn-primary" onclick="submitWithdrawal()">
-                    💰 Request Withdrawal
+                <input type="hidden" id="withdrawMethod">
+                
+                <label for="withdrawAmount">Amount in BOM:</label>
+                <input type="number" id="withdrawAmount" placeholder="Enter amount (min: 20)" min="20" step="1">
+                
+                <label id="withdrawDetailsLabel">Payout Details:</label>
+                <textarea id="withdrawDetails" placeholder="Enter your PayPal email / Bank details / Crypto wallet address"></textarea>
+                <small id="withdrawDetailsHint">Provide accurate details for payout</small>
+                
+                <div class="withdraw-summary">
+                    <p><strong>You will receive:</strong> $<span id="withdrawUsd">0.00</span> USD</p>
+                </div>
+                
+                <button class="btn-primary" onclick="submitWithdrawalRequest()">
+                    💰 Submit Withdrawal Request
+                </button>
+            </div>
+            <button class="btn-secondary" onclick="showWithdraw()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Transfer Section -->
+        <div class="card" id="transferSection" style="display: none;">
+            <h3>🔄 Transfer BOM</h3>
+            <div class="transfer-form">
+                <label for="receiverId">Receiver ID or @username:</label>
+                <input type="text" id="receiverId" placeholder="Enter Telegram ID or username">
+                
+                <label for="transferAmount">Amount in BOM:</label>
+                <input type="number" id="transferAmount" placeholder="Enter amount" min="1" step="0.01">
+                
+                <label for="transferDescription">Description (optional):</label>
+                <input type="text" id="transferDescription" placeholder="e.g., Payment for service">
+                
+                <div class="transfer-fee">
+                    <p><strong>Transfer Fee:</strong> Free</p>
+                    <p><strong>Available Balance:</strong> <span id="transferBalance">Loading...</span></p>
+                </div>
+                
+                <button class="btn-primary" onclick="submitTransfer()">
+                    🔄 Send Transfer
                 </button>
             </div>
             <button class="btn-secondary" onclick="hideAllSections()">
@@ -101,10 +204,21 @@
 
         <!-- Transaction History -->
         <div class="card history-section" id="historySection" style="display: none;">
-            <h3>🔄 Transaction History</h3>
-            <div class="history-controls">
-                <button class="btn-small" onclick="loadHistory(0)">Latest</button>
-                <button class="btn-small" onclick="loadHistory(1)">Older</button>
+            <h3>📊 Transaction History</h3>
+            <div class="history-filters">
+                <select id="historyFilter" onchange="loadHistory(0)">
+                    <option value="all">All Transactions</option>
+                    <option value="deposit">Deposits</option>
+                    <option value="withdrawal">Withdrawals</option>
+                    <option value="transfer">Transfers</option>
+                    <option value="subscription">Subscriptions</option>
+                </select>
+                <select id="historyStatus" onchange="loadHistory(0)">
+                    <option value="all">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                </select>
             </div>
             <div class="transactions-list" id="transactionsList">
                 <div class="loading">Loading transactions...</div>
@@ -124,18 +238,22 @@
                 <div class="premium-benefits">
                     <h4>Premium Benefits:</h4>
                     <ul>
-                        <li>✅ Unlimited bot creation</li>
-                        <li>✅ Unlimited broadcasts</li>
+                        <li>✅ Unlimited bot creation (9999 bots)</li>
+                        <li>✅ Unlimited broadcasts per week</li>
                         <li>✅ Unlimited co-admins</li>
                         <li>✅ Unlimited force-join channels</li>
                         <li>✅ Enable donation system</li>
                         <li>✅ Pin /start message</li>
                         <li>✅ Ad-free experience</li>
                         <li>✅ Priority support</li>
+                        <li>✅ Custom welcome messages</li>
+                        <li>✅ Advanced analytics</li>
+                        <li>✅ API access</li>
                     </ul>
                 </div>
                 <div class="pricing">
-                    <strong>Price: 5 BOM per month ($5.00)</strong>
+                    <strong>Price: 5 BOM per month ($5.00)</strong><br>
+                    <small>Auto-renewal enabled by default</small>
                 </div>
             </div>
             <div class="premium-actions" id="premiumActions">
@@ -148,10 +266,55 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Powered by Botomics • <a href="https://t.me/BotomicsSupportBot" target="_blank">Support</a></p>
+            <p>Powered by Botomics • <a href="https://t.me/BotomicsSupport" target="_blank">Support</a> • <a href="#" onclick="tg.openTelegramLink('https://t.me/BotomicsBot/terms')">Terms</a></p>
         </footer>
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // Initialize dynamic elements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update available balance
+            if (currentBalance) {
+                document.getElementById('availableBalance').textContent = `${currentBalance.balance} BOM`;
+                document.getElementById('transferBalance').textContent = `${currentBalance.balance} BOM`;
+            }
+            
+            // Update USD value for withdrawal
+            document.getElementById('withdrawAmount').addEventListener('input', function() {
+                const amount = parseFloat(this.value) || 0;
+                document.getElementById('withdrawUsd').textContent = amount.toFixed(2);
+            });
+            
+            // Update details hint based on method
+            document.getElementById('withdrawMethod').addEventListener('change', function() {
+                const method = this.value;
+                const label = document.getElementById('withdrawDetailsLabel');
+                const hint = document.getElementById('withdrawDetailsHint');
+                
+                switch(method) {
+                    case 'paypal':
+                        label.textContent = 'PayPal Email:';
+                        hint.textContent = 'Enter your PayPal email address for payout';
+                        break;
+                    case 'bank_transfer':
+                        label.textContent = 'Bank Details:';
+                        hint.textContent = 'Enter your bank account details (Account Number, Bank Name, SWIFT/IBAN)';
+                        break;
+                    case 'crypto':
+                        label.textContent = 'Crypto Wallet Address:';
+                        hint.textContent = 'Enter your cryptocurrency wallet address (BTC, ETH, USDT, etc.)';
+                        break;
+                }
+            });
+        });
+        
+        function copyPaymentAddress() {
+            const address = document.getElementById('paymentAddress').textContent;
+            navigator.clipboard.writeText(address).then(() => {
+                showAlert('Payment address copied to clipboard!', 'success');
+            });
+        }
+    </script>
 </body>
 </html>

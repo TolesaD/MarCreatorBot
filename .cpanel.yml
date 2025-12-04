@@ -1,11 +1,79 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/maroseff/public_html/botomics-bot/
-    - /bin/cp -R src $DEPLOYPATH
-    - /bin/cp -R config $DEPLOYPATH
-    - /bin/cp -R database $DEPLOYPATH
-    - /bin/cp -R scripts $DEPLOYPATH
-    - /bin/cp package.json $DEPLOYPATH
-    - /bin/cp .env $DEPLOYPATH || true
-    - echo "✅ Files deployed. Node modules will be installed by cPanel"
+    - export DEPLOYPATH=/home/yegara/public_html/
+    - /bin/cp -R * $DEPLOYPATH
+    - cd $DEPLOYPATH
+    - npm install --production
+    - npm run setup:prod
+    - npm run wallet:migrate
+    - npm run deploy:full
+    
+# cPanel Application Manager Configuration
+application:
+  name: "Botomics"
+  version: "1.0.0"
+  description: "Telegram Bot Platform with Wallet System"
+  category: "telegram-bots"
+  license: "MIT"
+  author: "Botomics Team"
+  website: "https://botomics.com"
+  
+  # Environment
+  environment: "production"
+  node_version: "18"
+  
+  # Process Manager
+  process_manager: "pm2"
+  pm2_config:
+    name: "botomics"
+    script: "server.js"
+    instances: "1"
+    exec_mode: "fork"
+    max_memory_restart: "200M"
+    env:
+      NODE_ENV: "production"
+      PORT: "3000"
+      
+  # Dependencies
+  dependencies:
+    node: ">=16.0.0"
+    npm: ">=8.0.0"
+    
+  # Health Check
+  health_check:
+    path: "/api/health"
+    port: "3000"
+    interval: "60"
+    
+  # Logging
+  logging:
+    access_log: "logs/access.log"
+    error_log: "logs/error.log"
+    
+  # Auto-restart
+  auto_restart: true
+  restart_delay: "5000"
+  
+  # Environment Variables
+  env_vars:
+    - name: "BOT_TOKEN"
+      description: "Telegram Bot Token"
+      required: true
+    - name: "WEBAPP_URL"
+      description: "Web App URL"
+      default: "https://testweb.maroset.com"
+    - name: "NODE_ENV"
+      value: "production"
+    - name: "PORT"
+      value: "3000"
+      
+  # Ports
+  ports:
+    - "3000"
+    
+  # SSL Configuration (if using HTTPS)
+  ssl:
+    enabled: false
+    certificate: "/etc/ssl/certs/cert.pem"
+    key: "/etc/ssl/private/key.pem"

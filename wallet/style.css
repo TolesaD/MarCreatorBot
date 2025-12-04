@@ -86,6 +86,7 @@ body {
 .balance-details {
     font-size: 14px;
     color: #666;
+    margin-bottom: 16px;
 }
 
 .currency-rate {
@@ -105,7 +106,7 @@ body {
 
 .action-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
 }
 
@@ -150,6 +151,7 @@ body {
 
 .btn-primary:hover {
     transform: translateY(-2px);
+    opacity: 0.9;
 }
 
 .btn-secondary {
@@ -174,34 +176,150 @@ body {
     margin: 0 4px;
 }
 
+.btn-copy {
+    padding: 4px 8px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 8px;
+}
+
 /* Forms */
-.withdraw-form {
+.deposit-form, .withdraw-form, .transfer-form {
     margin: 16px 0;
 }
 
-.withdraw-form label {
+.deposit-form label, .withdraw-form label, .transfer-form label {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
+    color: #333;
 }
 
-.withdraw-form input {
+.deposit-form input, .withdraw-form input, .transfer-form input,
+.deposit-form textarea, .withdraw-form textarea, .transfer-form textarea {
     width: 100%;
     padding: 12px;
     border: 2px solid #e9ecef;
     border-radius: 8px;
     font-size: 16px;
     margin-bottom: 12px;
+    font-family: inherit;
 }
 
-.withdraw-form input:focus {
+.deposit-form input:focus, .withdraw-form input:focus, .transfer-form input:focus,
+.deposit-form textarea:focus, .withdraw-form textarea:focus, .transfer-form textarea:focus {
     border-color: #667eea;
     outline: none;
 }
 
-/* Lists */
+.deposit-form textarea, .withdraw-form textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.deposit-form small, .withdraw-form small, .transfer-form small {
+    display: block;
+    color: #666;
+    font-size: 12px;
+    margin-top: -8px;
+    margin-bottom: 16px;
+}
+
+/* Instructions */
+.instructions {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+}
+
+.instructions h4 {
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.instructions ol {
+    margin-left: 20px;
+    margin-bottom: 16px;
+}
+
+.instructions li {
+    margin-bottom: 8px;
+}
+
+.payment-address {
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+    margin-top: 12px;
+}
+
+.payment-address code {
+    display: block;
+    font-family: monospace;
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 0;
+    word-break: break-all;
+}
+
+/* Withdraw Methods */
+.withdraw-methods {
+    margin: 16px 0;
+}
+
+.method-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.method-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 8px;
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.method-btn:hover {
+    background: #e9ecef;
+    border-color: #667eea;
+    transform: translateY(-2px);
+}
+
+.method-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+/* Transaction History */
+.history-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.history-filters select {
+    flex: 1;
+    padding: 8px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
 .transactions-list {
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
 }
 
@@ -209,46 +327,116 @@ body {
     padding: 12px;
     border-bottom: 1px solid #e9ecef;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 12px;
 }
 
 .transaction-item:last-child {
     border-bottom: none;
 }
 
-.transaction-amount.positive {
-    color: #2ecc71;
-    font-weight: bold;
-}
-
-.transaction-amount.negative {
-    color: #e74c3c;
-    font-weight: bold;
+.transaction-icon {
+    font-size: 20px;
+    width: 40px;
+    text-align: center;
 }
 
 .transaction-details {
     flex: 1;
-    margin-right: 12px;
+    min-width: 0;
 }
 
 .transaction-description {
     font-size: 14px;
     margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.transaction-date {
+.transaction-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+}
+
+.transaction-status {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.transaction-amount {
+    font-weight: bold;
+    font-size: 16px;
+    white-space: nowrap;
+}
+
+.transaction-amount.positive {
+    color: #2ecc71;
+}
+
+.transaction-amount.negative {
+    color: #e74c3c;
+}
+
+.status-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.status-badge.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-badge.completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.failed {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-badge.cancelled {
+    background: #d6d8d9;
+    color: #1b1e21;
+}
+
+/* Pagination */
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e9ecef;
+}
+
+.page-info {
     font-size: 12px;
     color: #666;
 }
 
 /* Premium Section */
+.premium-info {
+    margin: 16px 0;
+}
+
 .current-tier {
     text-align: center;
     padding: 12px;
     border-radius: 8px;
     margin-bottom: 16px;
     font-weight: bold;
+    font-size: 18px;
 }
 
 .current-tier.freemium {
@@ -280,10 +468,19 @@ body {
 .premium-benefits li {
     padding: 8px 0;
     border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
 }
 
 .premium-benefits li:last-child {
     border-bottom: none;
+}
+
+.premium-benefits li:before {
+    content: "✓";
+    color: #2ecc71;
+    font-weight: bold;
+    margin-right: 8px;
 }
 
 .pricing {
@@ -294,11 +491,24 @@ body {
     border-radius: 8px;
 }
 
+.subscription-info {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.subscription-info p {
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
 /* Loading States */
 .loading {
     text-align: center;
     color: #666;
     padding: 20px;
+    font-style: italic;
 }
 
 /* Footer */
@@ -313,6 +523,20 @@ body {
 .footer a {
     color: white;
     text-decoration: underline;
+    margin: 0 4px;
+}
+
+/* Transfer Fee & Summary */
+.transfer-fee, .withdraw-summary {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 16px 0;
+}
+
+.transfer-fee p, .withdraw-summary p {
+    margin-bottom: 4px;
+    font-size: 14px;
 }
 
 /* Responsive */
@@ -321,12 +545,21 @@ body {
         padding: 16px;
     }
     
-    .action-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+    .action-grid, .method-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
     
     .balance-amount {
         font-size: 32px;
+    }
+    
+    .transaction-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .transaction-amount {
+        align-self: flex-end;
     }
 }

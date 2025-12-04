@@ -38,8 +38,6 @@ const startHandler = async (ctx) => {
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create Bot', 'create_bot')],
       [Markup.button.callback('🤖 My Bots', 'my_bots')],
-      [Markup.button.callback('💰 Wallet', 'wallet_main')],
-      [Markup.button.callback('🎫 Premium', 'subscribe_premium')],
       [Markup.button.callback('❓ Help', 'help')],
       [Markup.button.callback('⭐ Features', 'features')]
     ]);
