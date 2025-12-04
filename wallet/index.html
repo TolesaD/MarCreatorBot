@@ -6,14 +6,52 @@
     <title>Botomics Wallet</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Additional inline styles for critical elements */
+        .hidden {
+            display: none !important;
+        }
+        
+        .telegram-only {
+            opacity: 0.8;
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .telegram-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
+    <div id="nonTelegramWarning" class="telegram-warning hidden">
+        <h3>⚠️ Telegram Mini App Required</h3>
+        <p>This wallet works only within Telegram. Please open it from:</p>
+        <ol style="text-align: left; margin: 15px auto; max-width: 300px;">
+            <li>Open @BotomicsBot</li>
+            <li>Type /wallet command</li>
+            <li>Click "Open Botomics Wallet"</li>
+        </ol>
+        <p><strong>Or use the menu button (≡) in the bot</strong></p>
+    </div>
+
+    <div class="container" id="mainContainer">
         <!-- Header -->
         <header class="header">
             <h1>💰 Botomics Wallet</h1>
             <div class="user-info" id="userInfo">
-                <span>Loading...</span>
+                <span>Loading user info...</span>
+                <br>
+                <small id="userId">ID: --</small>
             </div>
         </header>
 
@@ -21,7 +59,7 @@
         <div class="card balance-card">
             <div class="balance-header">
                 <h2>Your Balance</h2>
-                <button class="refresh-btn" onclick="refreshData()">🔄</button>
+                <button class="refresh-btn" onclick="refreshData()" id="refreshBtn">🔄</button>
             </div>
             <div class="balance-amount" id="balanceAmount">
                 <div class="loading">Loading balance...</div>
@@ -30,36 +68,44 @@
                 <div class="currency-rate">1 BOM = $1.00 USD</div>
                 <div class="wallet-status" id="walletStatus"></div>
             </div>
-            <button class="btn-small" onclick="copyWalletAddress()">
-                📋 Copy Wallet Address
-            </button>
+            <div class="wallet-actions">
+                <button class="btn-small" onclick="copyWalletAddress()" id="copyAddressBtn">
+                    📋 Copy Wallet Address
+                </button>
+                <button class="btn-small" onclick="showQRCode()" id="qrCodeBtn">
+                    📱 Show QR Code
+                </button>
+            </div>
         </div>
+
+        <!-- Wallet Status Warning -->
+        <div id="walletWarning" class="hidden"></div>
 
         <!-- Quick Actions -->
         <div class="quick-actions">
             <h3>Quick Actions</h3>
             <div class="action-grid">
-                <button class="action-btn" onclick="showDeposit()">
+                <button class="action-btn" onclick="showDeposit()" id="depositBtn">
                     <span class="icon">💳</span>
                     <span>Deposit</span>
                 </button>
-                <button class="action-btn" onclick="showWithdraw()">
+                <button class="action-btn" onclick="showWithdraw()" id="withdrawBtn">
                     <span class="icon">📤</span>
                     <span>Withdraw</span>
                 </button>
-                <button class="action-btn" onclick="showTransfer()">
+                <button class="action-btn" onclick="showTransfer()" id="transferBtn">
                     <span class="icon">🔄</span>
                     <span>Transfer</span>
                 </button>
-                <button class="action-btn" onclick="showHistory()">
+                <button class="action-btn" onclick="showHistory()" id="historyBtn">
                     <span class="icon">📊</span>
                     <span>History</span>
                 </button>
-                <button class="action-btn" onclick="showPremium()">
+                <button class="action-btn" onclick="showPremium()" id="premiumBtn">
                     <span class="icon">🎫</span>
                     <span>Premium</span>
                 </button>
-                <button class="action-btn" onclick="contactSupport()">
+                <button class="action-btn" onclick="contactSupport()" id="supportBtn">
                     <span class="icon">🆘</span>
                     <span>Support</span>
                 </button>
@@ -67,253 +113,526 @@
         </div>
 
         <!-- Deposit Section -->
-        <div class="card deposit-section" id="depositSection" style="display: none;">
+        <div class="card deposit-section hidden" id="depositSection">
             <h3>💳 Deposit BOM</h3>
             <div class="deposit-info">
                 <p><strong>Minimum Deposit:</strong> 5 BOM ($5.00)</p>
                 <p><strong>Processing Time:</strong> 1-6 hours after verification</p>
                 <p><strong>Rate:</strong> 1 BOM = $1.00 USD</p>
+                <p><strong>To Buy BOM:</strong> Contact @BotomicsSupportBot</p>
             </div>
             <div class="instructions">
                 <h4>How to Deposit:</h4>
                 <ol>
-                    <li>Send $ payment to our platform address</li>
-                    <li>Take screenshot or photo of transaction proof</li>
-                    <li>Upload proof and submit for verification</li>
-                    <li>Coins will be added after admin verification</li>
+                    <li>Contact @BotomicsSupportBot to buy BOM</li>
+                    <li>Specify amount you want to purchase</li>
+                    <li>Follow payment instructions provided</li>
+                    <li>Submit payment proof after payment</li>
+                    <li>Coins added after admin verification</li>
                 </ol>
                 <div class="payment-address">
-                    <strong>Payment Address:</strong>
-                    <code id="paymentAddress">BOTOMICS_PLATFORM_001</code>
+                    <strong>For Reference:</strong>
+                    <code id="paymentAddress">BOTOMICS_USER_<span id="userRef">USER_ID</span></code>
                     <button class="btn-copy" onclick="copyPaymentAddress()">📋 Copy</button>
                 </div>
+                <div class="telegram-only">
+                    <p><strong>📱 Quick Action:</strong></p>
+                    <button class="btn-primary" onclick="contactForBOM()">
+                        💬 Contact @BotomicsSupportBot
+                    </button>
+                </div>
             </div>
-            <button class="btn-primary" onclick="showDepositProofForm()">
-                📸 Submit Deposit Proof
-            </button>
-            <button class="btn-secondary" onclick="hideAllSections()">
-                🔙 Back
-            </button>
+            <div class="deposit-actions">
+                <button class="btn-primary" onclick="showDepositProofForm()" id="submitProofBtn">
+                    📸 I Already Paid - Submit Proof
+                </button>
+                <button class="btn-secondary" onclick="hideAllSections()">
+                    🔙 Back to Wallet
+                </button>
+            </div>
         </div>
 
-        <!-- Deposit Proof Section -->
-        <div class="card" id="depositProofSection" style="display: none;">
+        <!-- Deposit Proof Form -->
+        <div class="card hidden" id="depositProofSection">
             <h3>📸 Submit Deposit Proof</h3>
+            <p class="form-info">Only submit proof after you've made payment to @BotomicsSupportBot</p>
+            
             <div class="deposit-form">
-                <label for="depositAmount">Amount in BOM:</label>
-                <input type="number" id="depositAmount" placeholder="Enter amount" min="5" step="0.01">
-                
-                <label for="depositDescription">Description (optional):</label>
-                <input type="text" id="depositDescription" placeholder="e.g., Payment from PayPal">
-                
-                <label for="depositProof">Proof of Payment (screenshot/photo):</label>
-                <input type="file" id="depositProof" accept="image/*">
-                <small>Upload clear screenshot of your payment transaction</small>
-                
-                <button class="btn-primary" onclick="submitDepositProof()">
+                <div class="form-group">
+                    <label for="depositAmount">Amount in BOM:</label>
+                    <input type="number" id="depositAmount" placeholder="Enter amount" min="5" step="0.01" required>
+                    <small>Minimum: 5 BOM ($5.00)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="depositDescription">Transaction Reference (optional):</label>
+                    <input type="text" id="depositDescription" placeholder="e.g., PayPal Transaction ID #ABC123">
+                </div>
+
+                <div class="form-group">
+                    <label for="depositProof">Proof of Payment (screenshot/photo):</label>
+                    <input type="file" id="depositProof" accept="image/*, .pdf, .png, .jpg, .jpeg" required>
+                    <small>Upload clear screenshot of your payment transaction (Max: 5MB)</small>
+                </div>
+
+                <div class="form-note">
+                    <p>⚠️ <strong>Important:</strong></p>
+                    <ul>
+                        <li>Only submit after payment confirmation</li>
+                        <li>Proof must show transaction details</li>
+                        <li>Processing time: 1-6 hours</li>
+                        <li>You'll be notified when approved</li>
+                    </ul>
+                </div>
+
+                <button class="btn-primary" onclick="submitDepositProof()" id="submitDepositBtn">
                     📤 Submit for Verification
                 </button>
             </div>
+            
             <button class="btn-secondary" onclick="showDeposit()">
                 🔙 Back
             </button>
         </div>
 
         <!-- Withdraw Section -->
-        <div class="card withdraw-section" id="withdrawSection" style="display: none;">
+        <div class="card withdraw-section hidden" id="withdrawSection">
             <h3>📤 Withdraw BOM</h3>
             <div class="withdraw-info">
                 <p><strong>Minimum Withdrawal:</strong> 20 BOM ($20.00)</p>
                 <p><strong>Processing Time:</strong> 24 hours</p>
-                <p><strong>Available Balance:</strong> <span id="availableBalance">Loading...</span></p>
+                <p><strong>Fee:</strong> No fee for withdrawals</p>
+                <p><strong>Available Balance:</strong> <span id="availableBalance">Loading...</span> BOM</p>
             </div>
+            
             <div class="withdraw-methods">
                 <h4>Select Withdrawal Method:</h4>
                 <div class="method-grid">
-                    <button class="method-btn" onclick="showWithdrawRequestForm('paypal')">
+                    <button class="method-btn" onclick="selectWithdrawMethod('paypal')" id="paypalBtn">
                         <span class="method-icon">💼</span>
                         <span>PayPal</span>
                     </button>
-                    <button class="method-btn" onclick="showWithdrawRequestForm('bank_transfer')">
+                    <button class="method-btn" onclick="selectWithdrawMethod('bank_transfer')" id="bankBtn">
                         <span class="method-icon">🏦</span>
                         <span>Bank Transfer</span>
                     </button>
-                    <button class="method-btn" onclick="showWithdrawRequestForm('crypto')">
+                    <button class="method-btn" onclick="selectWithdrawMethod('crypto')" id="cryptoBtn">
                         <span class="method-icon">₿</span>
                         <span>Crypto</span>
                     </button>
                 </div>
             </div>
+            
             <button class="btn-secondary" onclick="hideAllSections()">
-                🔙 Back
+                🔙 Back to Wallet
             </button>
         </div>
 
-        <!-- Withdraw Request Section -->
-        <div class="card" id="withdrawRequestSection" style="display: none;">
+        <!-- Withdraw Request Form -->
+        <div class="card hidden" id="withdrawRequestSection">
             <h3>📤 Request Withdrawal</h3>
             <div class="withdraw-form">
-                <input type="hidden" id="withdrawMethod">
+                <input type="hidden" id="withdrawMethod" value="paypal">
                 
-                <label for="withdrawAmount">Amount in BOM:</label>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount (min: 20)" min="20" step="1">
-                
-                <label id="withdrawDetailsLabel">Payout Details:</label>
-                <textarea id="withdrawDetails" placeholder="Enter your PayPal email / Bank details / Crypto wallet address"></textarea>
-                <small id="withdrawDetailsHint">Provide accurate details for payout</small>
-                
-                <div class="withdraw-summary">
-                    <p><strong>You will receive:</strong> $<span id="withdrawUsd">0.00</span> USD</p>
+                <div class="form-group">
+                    <label for="withdrawAmount">Amount in BOM:</label>
+                    <input type="number" id="withdrawAmount" placeholder="Enter amount (minimum: 20)" min="20" step="1" required>
+                    <small>You'll receive: $<span id="withdrawUsd">0.00</span> USD</small>
                 </div>
-                
-                <button class="btn-primary" onclick="submitWithdrawalRequest()">
+
+                <div class="form-group">
+                    <label id="withdrawDetailsLabel">PayPal Email:</label>
+                    <textarea id="withdrawDetails" placeholder="Enter your PayPal email address" rows="3" required></textarea>
+                    <small id="withdrawDetailsHint">Enter accurate payout details</small>
+                </div>
+
+                <div class="withdraw-summary">
+                    <p><strong>Summary:</strong></p>
+                    <p>Withdraw: <span id="summaryAmount">0</span> BOM</p>
+                    <p>Receive: $<span id="summaryUsd">0.00</span> USD</p>
+                    <p>Method: <span id="summaryMethod">PayPal</span></p>
+                    <p>Processing: 24 hours</p>
+                </div>
+
+                <button class="btn-primary" onclick="submitWithdrawalRequest()" id="submitWithdrawBtn">
                     💰 Submit Withdrawal Request
                 </button>
             </div>
+            
             <button class="btn-secondary" onclick="showWithdraw()">
                 🔙 Back
             </button>
         </div>
 
         <!-- Transfer Section -->
-        <div class="card" id="transferSection" style="display: none;">
+        <div class="card hidden" id="transferSection">
             <h3>🔄 Transfer BOM</h3>
+            <div class="transfer-info">
+                <p><strong>Transfer Fee:</strong> Free</p>
+                <p><strong>Available Balance:</strong> <span id="transferBalance">Loading...</span> BOM</p>
+                <p><strong>Instant Transfer:</strong> Yes, within platform</p>
+            </div>
+            
             <div class="transfer-form">
-                <label for="receiverId">Receiver ID or @username:</label>
-                <input type="text" id="receiverId" placeholder="Enter Telegram ID or username">
-                
-                <label for="transferAmount">Amount in BOM:</label>
-                <input type="number" id="transferAmount" placeholder="Enter amount" min="1" step="0.01">
-                
-                <label for="transferDescription">Description (optional):</label>
-                <input type="text" id="transferDescription" placeholder="e.g., Payment for service">
-                
-                <div class="transfer-fee">
-                    <p><strong>Transfer Fee:</strong> Free</p>
-                    <p><strong>Available Balance:</strong> <span id="transferBalance">Loading...</span></p>
+                <div class="form-group">
+                    <label for="receiverId">Receiver Telegram ID or @username:</label>
+                    <input type="text" id="receiverId" placeholder="Enter Telegram ID or username" required>
+                    <small>Find user ID from their Telegram profile</small>
                 </div>
-                
-                <button class="btn-primary" onclick="submitTransfer()">
+
+                <div class="form-group">
+                    <label for="transferAmount">Amount in BOM:</label>
+                    <input type="number" id="transferAmount" placeholder="Enter amount" min="0.01" step="0.01" required>
+                    <small>Minimum: 0.01 BOM ($0.01)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="transferDescription">Description (optional):</label>
+                    <input type="text" id="transferDescription" placeholder="e.g., Payment for service, Gift, etc.">
+                </div>
+
+                <div class="transfer-note">
+                    <p>⚠️ <strong>Important:</strong></p>
+                    <ul>
+                        <li>Transfers are instant and irreversible</li>
+                        <li>Double-check receiver ID before sending</li>
+                        <li>Transfers can't be cancelled once sent</li>
+                        <li>Receiver must have a Botomics wallet</li>
+                    </ul>
+                </div>
+
+                <button class="btn-primary" onclick="submitTransfer()" id="submitTransferBtn">
                     🔄 Send Transfer
                 </button>
             </div>
+            
             <button class="btn-secondary" onclick="hideAllSections()">
-                🔙 Back
+                🔙 Back to Wallet
             </button>
         </div>
 
         <!-- Transaction History -->
-        <div class="card history-section" id="historySection" style="display: none;">
+        <div class="card history-section hidden" id="historySection">
             <h3>📊 Transaction History</h3>
             <div class="history-filters">
-                <select id="historyFilter" onchange="loadHistory(0)">
+                <select id="historyType" onchange="loadHistory()">
                     <option value="all">All Transactions</option>
                     <option value="deposit">Deposits</option>
                     <option value="withdrawal">Withdrawals</option>
                     <option value="transfer">Transfers</option>
                     <option value="subscription">Subscriptions</option>
+                    <option value="reward">Rewards</option>
                 </select>
-                <select id="historyStatus" onchange="loadHistory(0)">
+                <select id="historyStatus" onchange="loadHistory()">
                     <option value="all">All Status</option>
                     <option value="completed">Completed</option>
                     <option value="pending">Pending</option>
                     <option value="failed">Failed</option>
                 </select>
+                <select id="historyPeriod" onchange="loadHistory()">
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                    <option value="90days">Last 90 Days</option>
+                    <option value="all">All Time</option>
+                </select>
             </div>
+            
             <div class="transactions-list" id="transactionsList">
                 <div class="loading">Loading transactions...</div>
             </div>
+            
+            <div class="pagination" id="pagination">
+                <!-- Pagination will be inserted here -->
+            </div>
+            
             <button class="btn-secondary" onclick="hideAllSections()">
-                🔙 Back
+                🔙 Back to Wallet
             </button>
         </div>
 
         <!-- Premium Section -->
-        <div class="card premium-section" id="premiumSection" style="display: none;">
+        <div class="card premium-section hidden" id="premiumSection">
             <h3>🎫 Premium Subscription</h3>
             <div class="premium-info">
                 <div class="current-tier" id="currentTier">
                     Loading subscription status...
                 </div>
+                
                 <div class="premium-benefits">
-                    <h4>Premium Benefits:</h4>
+                    <h4>🎁 Premium Benefits:</h4>
                     <ul>
                         <li>✅ Unlimited bot creation (9999 bots)</li>
                         <li>✅ Unlimited broadcasts per week</li>
-                        <li>✅ Unlimited co-admins</li>
+                        <li>✅ Unlimited co-admins per bot</li>
                         <li>✅ Unlimited force-join channels</li>
-                        <li>✅ Enable donation system</li>
-                        <li>✅ Pin /start message</li>
+                        <li>✅ Enable donation system in bots</li>
+                        <li>✅ Pin /start message feature</li>
                         <li>✅ Ad-free experience</li>
-                        <li>✅ Priority support</li>
+                        <li>✅ Priority 24/7 support</li>
                         <li>✅ Custom welcome messages</li>
-                        <li>✅ Advanced analytics</li>
-                        <li>✅ API access</li>
+                        <li>✅ Advanced analytics dashboard</li>
+                        <li>✅ API access for automation</li>
+                        <li>✅ Early access to new features</li>
                     </ul>
                 </div>
+                
                 <div class="pricing">
-                    <strong>Price: 5 BOM per month ($5.00)</strong><br>
-                    <small>Auto-renewal enabled by default</small>
+                    <div class="price-card">
+                        <h4>Monthly Plan</h4>
+                        <div class="price">5 BOM</div>
+                        <div class="period">per month</div>
+                        <div class="usd-price">$5.00 USD</div>
+                        <button class="btn-primary" onclick="upgradeToPremium('monthly')" id="upgradeMonthlyBtn">
+                            💎 Upgrade Monthly
+                        </button>
+                    </div>
+                    
+                    <div class="price-card featured">
+                        <h4>Yearly Plan (Best Value)</h4>
+                        <div class="price">50 BOM</div>
+                        <div class="period">per year</div>
+                        <div class="usd-price">$50.00 USD</div>
+                        <div class="savings">Save 2 months!</div>
+                        <button class="btn-primary" onclick="upgradeToPremium('yearly')" id="upgradeYearlyBtn">
+                            🏆 Upgrade Yearly
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="subscription-info" id="subscriptionInfo">
+                    <!-- Subscription details will be inserted here -->
+                </div>
+                
+                <div class="premium-actions" id="premiumActions">
+                    <!-- Upgrade/Cancel buttons will be inserted here -->
                 </div>
             </div>
-            <div class="premium-actions" id="premiumActions">
-                <div class="loading">Loading actions...</div>
-            </div>
+            
             <button class="btn-secondary" onclick="hideAllSections()">
-                🔙 Back
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Support Section -->
+        <div class="card support-section hidden" id="supportSection">
+            <h3>🆘 Support & Help</h3>
+            <div class="support-options">
+                <div class="support-card">
+                    <h4>🤖 Bot Creation</h4>
+                    <p>Issues with creating or managing bots</p>
+                    <button class="btn-small" onclick="tg.openTelegramLink('https://t.me/BotomicsSupportBot?text=Bot+Creation+Help')">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>💰 Wallet Issues</h4>
+                    <p>Deposit, withdrawal, or transfer problems</p>
+                    <button class="btn-small" onclick="tg.openTelegramLink('https://t.me/BotomicsSupportBot?text=Wallet+Issue')">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>🎫 Premium</h4>
+                    <p>Subscription, billing, or premium features</p>
+                    <button class="btn-small" onclick="tg.openTelegramLink('https://t.me/BotomicsSupportBot?text=Premium+Support')">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>🛒 Buy BOM</h4>
+                    <p>Purchase BOM coins or payment issues</p>
+                    <button class="btn-small" onclick="contactForBOM()">
+                        Contact @BotomicsSupportBot
+                    </button>
+                </div>
+            </div>
+            
+            <div class="faq">
+                <h4>📚 Frequently Asked Questions</h4>
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFAQ(1)">How do I buy BOM coins?</button>
+                    <div class="faq-answer hidden">
+                        <p>Contact @BotomicsSupportBot directly. They will guide you through the purchase process.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFAQ(2)">What's the minimum withdrawal?</button>
+                    <div class="faq-answer hidden">
+                        <p>Minimum withdrawal is 20 BOM ($20.00). Processing time is 24 hours.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFAQ(3)">Can I cancel Premium?</button>
+                    <div class="faq-answer hidden">
+                        <p>Yes, you can cancel anytime. You keep premium features until the end of your billing period.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
             </button>
         </div>
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Powered by Botomics • <a href="https://t.me/BotomicsSupport" target="_blank">Support</a> • <a href="#" onclick="tg.openTelegramLink('https://t.me/BotomicsBot/terms')">Terms</a></p>
+            <div class="footer-links">
+                <a href="#" onclick="showTerms()">Terms of Service</a>
+                <a href="#" onclick="showPrivacy()">Privacy Policy</a>
+                <a href="#" onclick="contactSupport()">Support</a>
+                <a href="#" onclick="tg.openTelegramLink('https://t.me/BotomicsUpdates')">Updates</a>
+            </div>
+            <p class="copyright">
+                Powered by <strong>Botomics</strong> • Version 2.0.0 • 
+                <span id="currentYear">2024</span>
+            </p>
+            <p class="disclaimer">
+                Botomics (BOM) is a proprietary digital currency. 1 BOM = $1.00 USD fixed rate.
+            </p>
         </footer>
+    </div>
+
+    <!-- Modal for QR Code -->
+    <div class="modal hidden" id="qrModal">
+        <div class="modal-content">
+            <h3>📱 Wallet QR Code</h3>
+            <div class="qr-container" id="qrContainer">
+                <!-- QR code will be generated here -->
+            </div>
+            <p class="qr-address" id="qrAddress">Loading...</p>
+            <button class="btn-secondary" onclick="closeModal('qrModal')">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal for Terms -->
+    <div class="modal hidden" id="termsModal">
+        <div class="modal-content">
+            <h3>📋 Terms of Service</h3>
+            <div class="modal-body">
+                <!-- Terms content -->
+            </div>
+            <button class="btn-secondary" onclick="closeModal('termsModal')">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal for Privacy -->
+    <div class="modal hidden" id="privacyModal">
+        <div class="modal-content">
+            <h3>🔒 Privacy Policy</h3>
+            <div class="modal-body">
+                <!-- Privacy content -->
+            </div>
+            <button class="btn-secondary" onclick="closeModal('privacyModal')">
+                Close
+            </button>
+        </div>
     </div>
 
     <script src="app.js"></script>
     <script>
-        // Initialize dynamic elements
+        // Set current year in footer
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+        
+        // Initialize form event listeners
         document.addEventListener('DOMContentLoaded', function() {
-            // Update available balance
-            if (currentBalance) {
-                document.getElementById('availableBalance').textContent = `${currentBalance.balance} BOM`;
-                document.getElementById('transferBalance').textContent = `${currentBalance.balance} BOM`;
+            // Withdraw amount calculator
+            const withdrawAmountInput = document.getElementById('withdrawAmount');
+            if (withdrawAmountInput) {
+                withdrawAmountInput.addEventListener('input', function() {
+                    const amount = parseFloat(this.value) || 0;
+                    document.getElementById('withdrawUsd').textContent = amount.toFixed(2);
+                    document.getElementById('summaryAmount').textContent = amount;
+                    document.getElementById('summaryUsd').textContent = amount.toFixed(2);
+                });
             }
             
-            // Update USD value for withdrawal
-            document.getElementById('withdrawAmount').addEventListener('input', function() {
-                const amount = parseFloat(this.value) || 0;
-                document.getElementById('withdrawUsd').textContent = amount.toFixed(2);
-            });
+            // Transfer amount validator
+            const transferAmountInput = document.getElementById('transferAmount');
+            if (transferAmountInput) {
+                transferAmountInput.addEventListener('input', function() {
+                    const amount = parseFloat(this.value) || 0;
+                    const balance = currentBalance ? currentBalance.balance : 0;
+                    if (amount > balance) {
+                        this.style.borderColor = '#e74c3c';
+                    } else {
+                        this.style.borderColor = '';
+                    }
+                });
+            }
             
-            // Update details hint based on method
-            document.getElementById('withdrawMethod').addEventListener('change', function() {
-                const method = this.value;
-                const label = document.getElementById('withdrawDetailsLabel');
-                const hint = document.getElementById('withdrawDetailsHint');
-                
-                switch(method) {
-                    case 'paypal':
-                        label.textContent = 'PayPal Email:';
-                        hint.textContent = 'Enter your PayPal email address for payout';
-                        break;
-                    case 'bank_transfer':
-                        label.textContent = 'Bank Details:';
-                        hint.textContent = 'Enter your bank account details (Account Number, Bank Name, SWIFT/IBAN)';
-                        break;
-                    case 'crypto':
-                        label.textContent = 'Crypto Wallet Address:';
-                        hint.textContent = 'Enter your cryptocurrency wallet address (BTC, ETH, USDT, etc.)';
-                        break;
-                }
-            });
+            // Deposit amount validator
+            const depositAmountInput = document.getElementById('depositAmount');
+            if (depositAmountInput) {
+                depositAmountInput.addEventListener('input', function() {
+                    const amount = parseFloat(this.value) || 0;
+                    if (amount < 5) {
+                        this.style.borderColor = '#e74c3c';
+                    } else {
+                        this.style.borderColor = '';
+                    }
+                });
+            }
+            
+            // File upload preview for deposit proof
+            const depositProofInput = document.getElementById('depositProof');
+            if (depositProofInput) {
+                depositProofInput.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                            showAlert('File too large. Maximum size is 5MB.', 'error');
+                            this.value = '';
+                        }
+                    }
+                });
+            }
         });
         
-        function copyPaymentAddress() {
-            const address = document.getElementById('paymentAddress').textContent;
-            navigator.clipboard.writeText(address).then(() => {
-                showAlert('Payment address copied to clipboard!', 'success');
-            });
+        // FAQ toggle function
+        function toggleFAQ(index) {
+            const answer = document.querySelector(`.faq-item:nth-child(${index}) .faq-answer`);
+            answer.classList.toggle('hidden');
+        }
+        
+        // Modal functions
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+        
+        function showTerms() {
+            showModal('termsModal');
+        }
+        
+        function showPrivacy() {
+            showModal('privacyModal');
+        }
+        
+        function showQRCode() {
+            if (currentUser) {
+                const address = `BOTOMICS_${currentUser.id}`;
+                document.getElementById('qrAddress').textContent = address;
+                // In production, generate actual QR code here
+                document.getElementById('qrContainer').innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="background: #f0f0f0; padding: 20px; display: inline-block;">
+                            <div style="font-size: 24px;">📱</div>
+                            <p>QR Code would be generated here</p>
+                        </div>
+                    </div>
+                `;
+                showModal('qrModal');
+            }
         }
     </script>
 </body>
