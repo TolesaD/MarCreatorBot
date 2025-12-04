@@ -24,9 +24,9 @@ const isDevelopment = env === 'development';
 const isProduction = env === 'production';
 
 // Determine main bot name based on environment
-const mainBotName = isDevelopment ? 'MarCreatorDevBot' : 'MarCreatorBot';
-const mainBotUsername = isDevelopment ? '@MarCreatorDevBot' : '@MarCreatorBot';
-const supportUsername = isDevelopment ? 'MarCreatorDevSupportBot' : 'MarCreatorSupportBot';
+const mainBotName = isDevelopment ? 'BotomicsDevBot' : 'BotomicsBot';
+const mainBotUsername = isDevelopment ? '@BotomicsDevBot' : '@BotomicsBot';
+const supportUsername = isDevelopment ? 'BotomicsDevSupportBot' : 'BotomicsSupportBot';
 
 const config = {
   // ==================== ENVIRONMENT ====================
@@ -41,13 +41,13 @@ const config = {
   WEBHOOK_URL: process.env.WEBHOOK_URL || `http://localhost:${process.env.PORT || 3000}`,
   
   // ==================== PLATFORM IDENTITY ====================
-  PLATFORM_NAME: process.env.PLATFORM_NAME || 'MarCreator',
+  PLATFORM_NAME: process.env.PLATFORM_NAME || 'Botomics',
   BOT_NAME: mainBotName,
   BOT_USERNAME: mainBotUsername.replace('@', ''),
   SUPPORT_USERNAME: supportUsername,
-  TUTORIALS_CHANNEL: process.env.TUTORIALS_CHANNEL || 'https://t.me/MarCreator',
-  UPDATES_CHANNEL: process.env.UPDATES_CHANNEL || 'https://t.me/MarCreatorUpdates',
-  PLATFORM_URL: process.env.PLATFORM_URL || 'https://marcreator.com',
+  TUTORIALS_CHANNEL: process.env.TUTORIALS_CHANNEL || 'https://t.me/Botmics',
+  UPDATES_CHANNEL: process.env.UPDATES_CHANNEL || 'https://t.me/Botomics',
+  PLATFORM_URL: process.env.PLATFORM_URL || 'https://testweb.maroset.com',
   
   // ==================== WATERMARK & BRANDING ====================
   WATERMARK_TEXT: process.env.WATERMARK_TEXT || `✨ Created with [${mainBotName}](https://t.me/${mainBotUsername.replace('@', '')})`,

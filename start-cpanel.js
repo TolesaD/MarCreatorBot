@@ -1,5 +1,5 @@
 // start-cpanel.js - Yegara.com Specific Startup
-console.log('🚀 MarCreatorBot - Yegara.com Deployment');
+console.log('🚀 BotomicsBot - Yegara.com Deployment');
 console.log('========================================');
 
 // cPanel specific environment setup

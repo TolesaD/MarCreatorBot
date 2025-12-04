@@ -21,7 +21,7 @@
 ### 3. Repository Configuration
 - **Clone URL**: `https://github.com/yourusername/your-repo.git`
 - **Repository Path**: `/home/username/repositories/your-repo`
-- **Repository Name**: `marcreator-bot`
+- **Repository Name**: `botomics-bot`
 
 ### 4. Environment Variables
 1. Go to cPanel → **Environment Variables**

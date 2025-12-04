@@ -1,10 +1,15 @@
-﻿// src/app.js - COMPLETE BOTOMICS VERSION
+﻿// src/app.js - COMPLETE BOTOMICS VERSION WITH EXPRESS
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
 } else {
   console.log('🚀 Production mode - Using cPanel environment variables');
 }
+
+// ==================== EXPRESS SETUP FOR WALLET ====================
+const express = require('express');
+const path = require('path');
+// ===============================================================
 
 const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
 if (isCpanel) {
@@ -26,6 +31,256 @@ const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 const WalletService = require('./services/walletService');
 const SubscriptionService = require('./services/subscriptionService');
 
+// ==================== EXPRESS SERVER INITIALIZATION ====================
+console.log('🚀 Initializing Express server for production...');
+
+// Create Express app
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve wallet files from /wallet directory
+app.use('/wallet', express.static(path.join(__dirname, '..', 'wallet')));
+
+// Serve wallet index.html
+app.get('/wallet', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'wallet', 'index.html'));
+});
+
+// Serve wallet manifest
+app.get('/wallet/manifest.json', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'wallet', 'manifest.json'));
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'botomics',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    wallet: 'available',
+    bot: 'running',
+    database: 'connected'
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Botomics Platform</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+          margin: 0;
+          padding: 20px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          color: white;
+        }
+        .container {
+          max-width: 800px;
+          margin: 0 auto;
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          padding: 40px;
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+          font-size: 2.5em;
+          margin-bottom: 10px;
+          text-align: center;
+        }
+        .subtitle {
+          text-align: center;
+          color: rgba(255, 255, 255, 0.8);
+          margin-bottom: 30px;
+          font-size: 1.2em;
+        }
+        .status-card {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 15px;
+          padding: 20px;
+          margin-bottom: 30px;
+        }
+        .status-item {
+          display: flex;
+          align-items: center;
+          margin: 10px 0;
+          padding: 10px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        .emoji {
+          font-size: 1.5em;
+          margin-right: 15px;
+          width: 40px;
+          text-align: center;
+        }
+        .links {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 15px;
+          margin: 30px 0;
+        }
+        .link {
+          display: block;
+          padding: 20px;
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+          text-decoration: none;
+          border-radius: 15px;
+          text-align: center;
+          transition: all 0.3s ease;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .link:hover {
+          background: rgba(255, 255, 255, 0.3);
+          transform: translateY(-5px);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .link-emoji {
+          font-size: 2em;
+          display: block;
+          margin-bottom: 10px;
+        }
+        .instructions {
+          background: rgba(0,0,0,0.2);
+          border-radius: 15px;
+          padding: 25px;
+          margin-top: 30px;
+        }
+        .instructions h3 {
+          margin-top: 0;
+        }
+        .instructions ol {
+          margin: 15px 0;
+          padding-left: 20px;
+        }
+        .instructions li {
+          margin: 10px 0;
+        }
+        .url {
+          background: rgba(0,0,0,0.3);
+          padding: 5px 10px;
+          border-radius: 5px;
+          font-family: monospace;
+          font-size: 0.9em;
+          word-break: break-all;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🤖 Botomics Platform</h1>
+        <div class="subtitle">Create and manage Telegram bots with integrated wallet system</div>
+        
+        <div class="status-card">
+          <h3>📊 Server Status</h3>
+          <div class="status-item">
+            <span class="emoji">🌐</span>
+            <div>
+              <strong>URL:</strong><br>
+              <span class="url">https://testweb.maroset.com</span>
+            </div>
+          </div>
+          <div class="status-item">
+            <span class="emoji">💰</span>
+            <div>
+              <strong>Wallet:</strong><br>
+              <span class="url">https://testweb.maroset.com/wallet</span>
+            </div>
+          </div>
+          <div class="status-item">
+            <span class="emoji">🤖</span>
+            <div>
+              <strong>Telegram Bot:</strong><br>
+              <span class="url">@BotomicsSupport</span>
+            </div>
+          </div>
+          <div class="status-item">
+            <span class="emoji">⚡</span>
+            <div>
+              <strong>Environment:</strong><br>
+              <span class="url">${process.env.NODE_ENV || 'development'}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="links">
+          <a href="/wallet" class="link">
+            <span class="link-emoji">💰</span>
+            <strong>Botomics Wallet</strong><br>
+            <small>Manage BOM tokens & premium</small>
+          </a>
+          <a href="/health" class="link">
+            <span class="link-emoji">🩺</span>
+            <strong>Health Check</strong><br>
+            <small>Server status & diagnostics</small>
+          </a>
+          <a href="https://t.me/BotomicsSupport" target="_blank" class="link">
+            <span class="link-emoji">📱</span>
+            <strong>Open Bot</strong><br>
+            <small>Telegram: @BotomicsSupport</small>
+          </a>
+          <a href="https://t.me/BotomicsSupport" target="_blank" class="link">
+            <span class="link-emoji">💬</span>
+            <strong>Support</strong><br>
+            <small>Get help & report issues</small>
+          </a>
+        </div>
+        
+        <div class="instructions">
+          <h3>📱 Testing Instructions</h3>
+          <ol>
+            <li>Open Telegram and find <strong>@BotomicsSupport</strong></li>
+            <li>Start the bot with <code>/start</code> command</li>
+            <li>Click the "Wallet" button or use <code>/wallet</code> command</li>
+            <li>The wallet will open in Telegram Web App</li>
+            <li>Test all features: balance, deposit, withdraw, premium subscription</li>
+          </ol>
+          <p><strong>💡 Note:</strong> The wallet requires Telegram Web App support. Make sure you're using the latest Telegram app.</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; color: rgba(255, 255, 255, 0.7); font-size: 0.9em;">
+          <p>Powered by Botomics • Running on Yegara.com cPanel • ${new Date().getFullYear()}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Start Express server
+const expressServer = app.listen(PORT, () => {
+  console.log(`✅ Express server started on port ${PORT}`);
+  console.log(`🌐 Web URL: http://localhost:${PORT}`);
+  console.log(`💰 Wallet URL: http://localhost:${PORT}/wallet`);
+  console.log(`🩺 Health check: http://localhost:${PORT}/health`);
+});
+
+// Handle server errors
+expressServer.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+    console.log('💡 Try: kill $(lsof -t -i:3000) or use a different port');
+    process.exit(1);
+  } else {
+    console.error('❌ Express server error:', error);
+    process.exit(1);
+  }
+});
+
+// ==================== BOT CREATOR CLASS ====================
 class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN) {
@@ -41,34 +296,43 @@ class MetaBotCreator {
         agent: null
       }
     });
+    
+    // Configure webhook for production
+    if (isCpanel) {
+      console.log('🌐 Setting up webhook for cPanel production...');
+      const webhookUrl = 'https://testweb.maroset.com/bot';
+      this.bot.telegram.setWebhook(webhookUrl);
+      app.use(this.bot.webhookCallback('/bot'));
+      console.log(`✅ Webhook configured: ${webhookUrl}`);
+    }
+    
     this.setupHandlers();
   }
   
   setupHandlers() {
-  console.log('🔄 Setting up bot handlers...');
-  
-  // Add Mini App FIRST
-  this.setupMiniApp();
-  
-  // Middleware
-  this.bot.use(async (ctx, next) => {
-    ctx.isMainBot = true;
-    ctx.miniBotManager = this;
+    console.log('🔄 Setting up bot handlers...');
     
-    // Skip ban check for platform admin
-    if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
+    // Add Mini App FIRST
+    this.setupMiniApp();
+    
+    // Middleware
+    this.bot.use(async (ctx, next) => {
+      ctx.isMainBot = true;
+      ctx.miniBotManager = this;
+      
+      // Skip ban check for platform admin
+      if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
+        return next();
+      }
+      
+      // Check if user is banned
+      if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
+        await ctx.reply('🚫 Your account has been banned from using this platform.');
+        return;
+      }
+      
       return next();
-    }
-    
-    // Check if user is banned
-    if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
-      await ctx.reply('🚫 Your account has been banned from using this platform.');
-      return;
-    }
-    
-    return next();
-  });
-  
+    });
     
     // Commands
     this.bot.start(startHandler);
@@ -185,77 +449,113 @@ class MetaBotCreator {
   }
 
   setupMiniApp() {
-  console.log('🔄 Setting up Mini App...');
-  
-  // Add Mini App to menu
-  this.bot.telegram.setChatMenuButton({
-    menu_button: {
-      type: 'web_app',
-      text: '💰 Botomics Wallet',
-      web_app: { url: 'https://testweb.maroset.com/wallet' }
-    }
-  });
-  
-  // Mini App handler
-  this.bot.on('web_app_data', async (ctx) => {
-    try {
-      const data = JSON.parse(ctx.webAppData.data);
-      console.log('📱 Mini App data received:', data);
-      
-      const userId = ctx.from.id;
-      
-      switch (data.action) {
-        case 'get_balance':
-          const balance = await WalletService.getBalance(userId);
-          await ctx.reply(
-            `💰 *Your Wallet Balance*\n\n` +
-            `*Balance:* ${balance.balance} ${balance.currency}\n` +
-            `*Status:* ${balance.isFrozen ? '❄️ Frozen' : '✅ Active'}\n\n` +
-            `*1 BOM = $1.00 USD*`,
-            { parse_mode: 'Markdown' }
-          );
-          break;
-          
-        case 'premium_upgrade':
-          await this.upgradeToPremium(ctx);
-          break;
-          
-        case 'deposit_info':
-          await this.showDepositInstructions(ctx);
-          break;
-          
-        case 'withdraw_info':
-          await this.showWithdrawalInstructions(ctx);
-          break;
-          
-        case 'transaction_history':
-          await this.showTransactionHistory(ctx, 0);
-          break;
-          
-        case 'subscription_info':
-          await this.showPremium(ctx);
-          break;
-          
-        default:
-          await ctx.reply('❌ Unknown Mini App action');
+    console.log('🔗 Setting up Mini App...');
+    
+    // Production wallet URL
+    const walletUrl = 'https://testweb.maroset.com/wallet';
+    console.log(`💰 Production Wallet URL: ${walletUrl}`);
+    
+    // Set menu button for wallet
+    this.bot.telegram.setChatMenuButton({
+      menu_button: {
+        type: 'web_app',
+        text: '💰 Botomics Wallet',
+        web_app: { url: walletUrl }
       }
-    } catch (error) {
-      console.error('Mini App error:', error);
-      await ctx.reply('❌ Mini App processing error');
-    }
-  });
-  
-  console.log('✅ Mini App setup complete');
-}
+    });
+    
+    // Set bot commands to include wallet
+    this.bot.telegram.setMyCommands([
+      { command: 'start', description: 'Start the bot' },
+      { command: 'help', description: 'Show help' },
+      { command: 'features', description: 'Show features' },
+      { command: 'create', description: 'Create a new bot' },
+      { command: 'mybots', description: 'View your bots' },
+      { command: 'wallet', description: 'Open your wallet' }
+    ]);
+    
+    // Wallet command handler
+    this.bot.command('wallet', async (ctx) => {
+      try {
+        await ctx.reply(
+          '💰 **Botomics Wallet**\n\n' +
+          'Manage your BOM tokens and premium subscription.\n\n' +
+          'Click the button below to open your wallet:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [Markup.button.url('💰 Open Wallet', walletUrl)]
+              ]
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Wallet command error:', error);
+        await ctx.reply('❌ Could not open wallet. Please try again later.');
+      }
+    });
+    
+    // Mini App data handler
+    this.bot.on('web_app_data', async (ctx) => {
+      try {
+        const data = JSON.parse(ctx.webAppData.data);
+        console.log('📱 Mini App data received:', data);
+        
+        const userId = ctx.from.id;
+        
+        switch (data.action) {
+          case 'get_balance':
+            const balance = await WalletService.getBalance(userId);
+            await ctx.reply(
+              `💰 *Your Wallet Balance*\n\n` +
+              `*Balance:* ${balance.balance} ${balance.currency}\n` +
+              `*Status:* ${balance.isFrozen ? '❄️ Frozen' : '✅ Active'}\n\n` +
+              `*1 BOM = $1.00 USD*`,
+              { parse_mode: 'Markdown' }
+            );
+            break;
+            
+          case 'premium_upgrade':
+            await this.upgradeToPremium(ctx);
+            break;
+            
+          case 'deposit_info':
+            await this.showDepositInstructions(ctx);
+            break;
+            
+          case 'withdraw_info':
+            await this.showWithdrawalInstructions(ctx);
+            break;
+            
+          case 'transaction_history':
+            await this.showTransactionHistory(ctx, 0);
+            break;
+            
+          case 'subscription_info':
+            await this.showPremium(ctx);
+            break;
+            
+          default:
+            await ctx.reply('❌ Unknown Mini App action');
+        }
+      } catch (error) {
+        console.error('Mini App error:', error);
+        await ctx.reply('❌ Mini App processing error');
+      }
+    });
+    
+    console.log('✅ Mini App configured for production');
+  }
 
-// Add this method to get next reset date
-getNextResetDate() {
-  const now = new Date();
-  const nextMonday = new Date(now);
-  nextMonday.setDate(now.getDate() + ((7 - now.getDay()) % 7 + 1) % 7);
-  nextMonday.setHours(0, 0, 0, 0);
-  return nextMonday.toLocaleDateString();
-}
+  // Add this method to get next reset date
+  getNextResetDate() {
+    const now = new Date();
+    const nextMonday = new Date(now);
+    nextMonday.setDate(now.getDate() + ((7 - now.getDay()) % 7 + 1) % 7);
+    nextMonday.setHours(0, 0, 0, 0);
+    return nextMonday.toLocaleDateString();
+  }
   
   setupCallbackHandlers() {
     console.log('🔄 Setting up main bot callback handlers...');
@@ -679,7 +979,7 @@ getNextResetDate() {
         `• Database connections use SSL/TLS\n` +
         `• Regular security updates\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @BotomicsSupportBot\n\n` +
+        `Questions? Contact @BotomicsSupport\n\n` +
         `By using this service, you agree to our privacy practices.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -700,7 +1000,7 @@ getNextResetDate() {
       await ctx.reply(
         `🔒 Privacy Policy\n\n` +
         `We protect your data. We collect only necessary information to provide the service.\n\n` +
-        `Contact @BotomicsSupportBot for concerns.`,
+        `Contact @BotomicsSupport for concerns.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -745,7 +1045,7 @@ getNextResetDate() {
         `*Changes to Terms:*\n` +
         `We may update these terms with reasonable notice.\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @BotomicsSupportBot\n\n` +
+        `Questions? Contact @BotomicsSupport\n\n` +
         `By using this service, you agree to these terms.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -766,7 +1066,7 @@ getNextResetDate() {
       await ctx.reply(
         `📋 Terms of Service\n\n` +
         `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-        `Contact @BotomicsSupportBot for questions.`,
+        `Contact @BotomicsSupport for questions.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -818,27 +1118,40 @@ getNextResetDate() {
       setTimeout(() => {
         console.log('🚀 STEP 2: Starting main bot...');
         
-        this.bot.launch({
-          dropPendingUpdates: true,
-          allowedUpdates: ['message', 'callback_query']
-        })
-          .then(() => {
-            console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-            console.log('========================================');
-            console.log('📱 Main Bot: Manages bot creation & wallet');
-            console.log('🤖 Mini-bots: Handle user messages');
-            console.log('💰 Botomics: Digital currency system');
-            console.log('🎫 Premium: Subscription tiers');
-            console.log('💬 Send /start to see main menu');
-            console.log('🔧 Use /createbot to create new bots');
-            console.log('📋 Use /mybots to view your bots');
-            console.log('👑 Use /platform for admin dashboard');
-            console.log('🔒 Legal: /privacy & /terms available');
-            console.log('========================================');
+        // For cPanel production, use webhook mode
+        if (isCpanel) {
+          console.log('✅ Webhook already configured with Express');
+          console.log('🎉 Botomics Platform is now LIVE on production!');
+          console.log('\n📊 Production Status:');
+          console.log('   🌐 URL: https://testweb.maroset.com');
+          console.log('   💰 Wallet: https://testweb.maroset.com/wallet');
+          console.log('   🤖 Bot: @BotomicsSupport');
+          console.log('   🩺 Health: https://testweb.maroset.com/health');
+          console.log('   🗄️ Database: Connected');
+        } else {
+          // For local/development, use polling
+          this.bot.launch({
+            dropPendingUpdates: true,
+            allowedUpdates: ['message', 'callback_query']
           })
-          .catch(error => {
-            console.error('❌ Failed to start main bot:', error.message);
-          });
+            .then(() => {
+              console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
+              console.log('========================================');
+              console.log('📱 Main Bot: Manages bot creation & wallet');
+              console.log('🤖 Mini-bots: Handle user messages');
+              console.log('💰 Botomics: Digital currency system');
+              console.log('🎫 Premium: Subscription tiers');
+              console.log('💬 Send /start to see main menu');
+              console.log('🔧 Use /createbot to create new bots');
+              console.log('📋 Use /mybots to view your bots');
+              console.log('👑 Use /platform for admin dashboard');
+              console.log('🔒 Legal: /privacy & /terms available');
+              console.log('========================================');
+            })
+            .catch(error => {
+              console.error('❌ Failed to start main bot:', error.message);
+            });
+        }
       }, 10000);
     }).catch(error => {
       console.error('❌ Mini-bot initialization failed:', error);
@@ -852,16 +1165,20 @@ getNextResetDate() {
   startMainBotWithDelay() {
     console.log('⏳ Starting main bot with 15 second delay...');
     setTimeout(() => {
-      this.bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query']
-      })
-        .then(() => {
-          console.log('🎉 Main bot started (mini-bots may be unavailable)');
+      if (isCpanel) {
+        console.log('✅ Production webhook mode active');
+      } else {
+        this.bot.launch({
+          dropPendingUpdates: true,
+          allowedUpdates: ['message', 'callback_query']
         })
-        .catch(error => {
-          console.error('❌ Main bot failed to start:', error.message);
-        });
+          .then(() => {
+            console.log('🎉 Main bot started (mini-bots may be unavailable)');
+          })
+          .catch(error => {
+            console.error('❌ Main bot failed to start:', error.message);
+          });
+      }
     }, 15000);
   }
   
@@ -893,8 +1210,11 @@ getNextResetDate() {
 // Start the application
 async function startApplication() {
   try {
-    console.log('🔧 Starting MetaBot Creator application...');
+    console.log('🔧 Starting Botomics Platform application...');
     console.log('🚀 Optimized for Yegara.com cPanel deployment');
+    console.log(`🌐 Production domain: testweb.maroset.com`);
+    console.log(`💰 Wallet URL: https://testweb.maroset.com/wallet`);
+    console.log(`🤖 Bot: @BotomicsSupport`);
     
     const app = new MetaBotCreator();
     await app.initialize();

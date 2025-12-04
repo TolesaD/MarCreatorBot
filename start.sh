@@ -1,3 +1,3 @@
 #!/bin/bash
-echo "🚀 Starting MarCreatorBot..."
+echo "🚀 Starting BotomicsBot..."
 npm start

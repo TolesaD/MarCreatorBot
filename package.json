@@ -1,5 +1,5 @@
 {
-  "name": "marcreator",
+  "name": "Botomics",
   "version": "1.0.0",
   "description": "A Telegram bot that allows users to create and manage their own mini-bots",
   "main": "src/app.js",
@@ -7,6 +7,10 @@
     "start": "node src/app.js",
     "start:dev": "set NODE_ENV=development&& node src/app.js",
     "start:prod": "set NODE_ENV=production&& node src/app.js",
+    "wallet": "node wallet-server.js",
+    "wallet:dev": "set NODE_ENV=development&& WALLET_PORT=3001 node wallet-server.js",
+    "wallet:prod": "set NODE_ENV=production&& WALLET_PORT=3000 node wallet-server.js",
+    "both": "concurrently \"npm start\" \"npm run wallet:dev\"",
     "test": "set NODE_ENV=test&& node test-local.js",
     "test:dev": "set NODE_ENV=development&& node test-local.js",
     "test:prod": "set NODE_ENV=production&& node test-local.js",
@@ -21,6 +25,7 @@
     "migrate:advanced": "node scripts/create_advanced_tables.js",
     "migrate:all": "npm run migrate:advanced && npm run migrate:new-features",
     "dev": "set NODE_ENV=development&& nodemon src/app.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run wallet:dev\"",
     "test:new-features": "set NODE_ENV=development&& node test-new-features.js",
     "migrate:new-features": "set NODE_ENV=development&& node scripts/create_new_features_tables.js",
     "setup:test": "npm run migrate:new-features && npm run test:new-features",
@@ -30,25 +35,15 @@
     "deploy:complete": "npm run migrate:all && npm run setup:botomics && npm run set-commands",
     "cron:daily": "node src/scripts/daily_maintenance.js"
   },
-  "keywords": [
-    "telegram",
-    "bot",
-    "metabot",
-    "creator"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
   "dependencies": {
-    "telegraf": "^4.16.3",
-    "sequelize": "^6.37.3",
+    "axios": "^1.6.0",
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.1",
+    "node-fetch": "^2.6.7",
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
-    "dotenv": "^16.4.5",
-    "node-fetch": "^2.6.7",
-    "axios": "^1.6.0",
-    "express": "^4.18.2"
-  },
-  "engines": {
-    "node": ">=14.0.0"
+    "sequelize": "^6.37.3",
+    "telegraf": "^4.16.3"
   }
 }

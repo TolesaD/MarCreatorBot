@@ -8,8 +8,8 @@ const isDevelopment = process.env.NODE_ENV === 'development' ||
                      process.env.NODE_ENV === 'dev' || 
                      process.env.DEV_MODE === 'true';
 
-const mainBotName = isDevelopment ? 'MarCreatorDevBot' : 'MarCreatorBot';
-const serviceName = isDevelopment ? 'MarCreatorBot DEV' : 'MarCreatorBot';
+const mainBotName = isDevelopment ? 'BotomicsDevBot' : 'BotomicsBot';
+const serviceName = isDevelopment ? 'BotomicsBot DEV' : 'BotomicsBot';
 
 console.log(`🏥 Health check server starting for ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'} environment`);
 console.log(`🤖 Service: ${serviceName}`);

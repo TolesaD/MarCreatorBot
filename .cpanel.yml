@@ -1,7 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/maroseff/public_html/marcreator-bot/
+    - export DEPLOYPATH=/home/maroseff/public_html/botomics-bot/
     - /bin/cp -R src $DEPLOYPATH
     - /bin/cp -R config $DEPLOYPATH
     - /bin/cp -R database $DEPLOYPATH
