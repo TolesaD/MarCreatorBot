@@ -25,7 +25,13 @@
 
 ### 4. Environment Variables
 1. Go to cPanel → **Environment Variables**
-2. Add the variables:
+2. Add these variables:
+   - `BOT_TOKEN=7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI`
+   - `ENCRYPTION_KEY=W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU=`
+   - `DATABASE_URL=your_postgresql_connection_string`
+   - `NODE_ENV=production`
+   - `PORT=3000`
+
 ### 5. Database Setup
 1. Go to cPanel → **PostgreSQL Databases**
 2. Create new database and user
