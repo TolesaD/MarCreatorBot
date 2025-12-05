@@ -1,79 +1,56 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/yegara/public_html/
-    - /bin/cp -R * $DEPLOYPATH
-    - cd $DEPLOYPATH
-    - npm install --production
-    - npm run setup:prod
-    - npm run wallet:migrate
-    - npm run deploy:full
+    # Define deployment paths
+    - export DEPLOYPATH=/home/maroseff/public_html/marcreator-bot/
+    - export TESTWEB_PATH=/home/maroseff/public_html/testweb.maroset.com/
     
-# cPanel Application Manager Configuration
-application:
-  name: "Botomics"
-  version: "1.0.0"
-  description: "Telegram Bot Platform with Wallet System"
-  category: "telegram-bots"
-  license: "MIT"
-  author: "Botomics Team"
-  website: "https://botomics.com"
-  
-  # Environment
-  environment: "production"
-  node_version: "18"
-  
-  # Process Manager
-  process_manager: "pm2"
-  pm2_config:
-    name: "botomics"
-    script: "server.js"
-    instances: "1"
-    exec_mode: "fork"
-    max_memory_restart: "200M"
-    env:
-      NODE_ENV: "production"
-      PORT: "3000"
-      
-  # Dependencies
-  dependencies:
-    node: ">=16.0.0"
-    npm: ">=8.0.0"
+    # Deploy main bot application
+    - echo "🚀 Deploying main bot application..."
+    - /bin/cp -R src $DEPLOYPATH
+    - /bin/cp -R config $DEPLOYPATH
+    - /bin/cp -R database $DEPLOYPATH
+    - /bin/cp -R scripts $DEPLOYPATH
+    - /bin/cp package.json $DEPLOYPATH
+    - /bin/cp .env $DEPLOYPATH || true
     
-  # Health Check
-  health_check:
-    path: "/api/health"
-    port: "3000"
-    interval: "60"
+    # Deploy Botomics Wallet to testweb.maroset.com
+    - echo "💰 Deploying Botomics Wallet..."
+    - mkdir -p $TESTWEB_PATH/wallet
+    - /bin/cp wallet/index.html $TESTWEB_PATH/wallet/
+    - /bin/cp wallet/app.js $TESTWEB_PATH/wallet/
+    - /bin/cp wallet/style.css $TESTWEB_PATH/wallet/
+    - /bin/cp wallet/manifest.json $TESTWEB_PATH/wallet/
     
-  # Logging
-  logging:
-    access_log: "logs/access.log"
-    error_log: "logs/error.log"
+    # Deploy .htaccess for testweb.maroset.com
+    - echo "🌐 Configuring web server..."
+    - /bin/cp .htaccess $TESTWEB_PATH/
     
-  # Auto-restart
-  auto_restart: true
-  restart_delay: "5000"
-  
-  # Environment Variables
-  env_vars:
-    - name: "BOT_TOKEN"
-      description: "Telegram Bot Token"
-      required: true
-    - name: "WEBAPP_URL"
-      description: "Web App URL"
-      default: "https://testweb.maroset.com"
-    - name: "NODE_ENV"
-      value: "production"
-    - name: "PORT"
-      value: "3000"
-      
-  # Ports
-  ports:
-    - "3000"
+    # Set proper permissions
+    - echo "🔒 Setting permissions..."
+    - chmod 755 $TESTWEB_PATH/wallet
+    - chmod 644 $TESTWEB_PATH/wallet/*.html
+    - chmod 644 $TESTWEB_PATH/wallet/*.js
+    - chmod 644 $TESTWEB_PATH/wallet/*.css
+    - chmod 644 $TESTWEB_PATH/wallet/*.json
+    - chmod 644 $TESTWEB_PATH/.htaccess
     
-  # SSL Configuration (if using HTTPS)
-  ssl:
-    enabled: false
-    certificate: "/etc/ssl/certs/cert.pem"
-    key: "/etc/ssl/private/key.pem"
+    # Install/update dependencies for main bot
+    - echo "📦 Installing/updating dependencies..."
+    - cd $DEPLOYPATH && npm install --production
+    
+    # Restart PM2 process
+    - echo "🔄 Restarting bot application..."
+    - pm2 restart marcreator-bot || pm2 start $DEPLOYPATH/src/app.js --name marcreator-bot
+    
+    # Create deployment log
+    - echo "📝 Creating deployment log..."
+    - date > $DEPLOYPATH/deployment.log
+    - echo "Botomics Wallet deployed to: $TESTWEB_PATH/wallet/" >> $DEPLOYPATH/deployment.log
+    - echo "Main bot deployed to: $DEPLOYPATH" >> $DEPLOYPATH/deployment.log
+    
+    # Final message
+    - echo "✅ Deployment completed successfully!"
+    - echo "   Main Bot: https://marcreator-bot.com"
+    - echo "   Wallet: https://testweb.maroset.com/wallet"
+    - echo "   API Endpoint: https://testweb.maroset.com/api/"
