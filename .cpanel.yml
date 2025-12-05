@@ -6,16 +6,16 @@ deployment:
     - export TESTWEB_PATH=/home/maroseff/public_html/testweb.maroset.com/
     
     # Deploy main bot application
-    - echo "🚀 Deploying main bot application..."
+    - echo "Deploying main bot application..."
     - /bin/cp -R src $DEPLOYPATH
     - /bin/cp -R config $DEPLOYPATH
     - /bin/cp -R database $DEPLOYPATH
     - /bin/cp -R scripts $DEPLOYPATH
     - /bin/cp package.json $DEPLOYPATH
-    - /bin/cp .env $DEPLOYPATH || true
+    - /bin/cp .env $DEPLOYPATH 2>/dev/null || true
     
     # Deploy Botomics Wallet to testweb.maroset.com
-    - echo "💰 Deploying Botomics Wallet..."
+    - echo "Deploying Botomics Wallet..."
     - mkdir -p $TESTWEB_PATH/wallet
     - /bin/cp wallet/index.html $TESTWEB_PATH/wallet/
     - /bin/cp wallet/app.js $TESTWEB_PATH/wallet/
@@ -23,34 +23,34 @@ deployment:
     - /bin/cp wallet/manifest.json $TESTWEB_PATH/wallet/
     
     # Deploy .htaccess for testweb.maroset.com
-    - echo "🌐 Configuring web server..."
-    - /bin/cp .htaccess $TESTWEB_PATH/
+    - echo "Configuring web server..."
+    - /bin/cp .htaccess $TESTWEB_PATH/ 2>/dev/null || true
     
     # Set proper permissions
-    - echo "🔒 Setting permissions..."
+    - echo "Setting permissions..."
     - chmod 755 $TESTWEB_PATH/wallet
-    - chmod 644 $TESTWEB_PATH/wallet/*.html
-    - chmod 644 $TESTWEB_PATH/wallet/*.js
-    - chmod 644 $TESTWEB_PATH/wallet/*.css
-    - chmod 644 $TESTWEB_PATH/wallet/*.json
-    - chmod 644 $TESTWEB_PATH/.htaccess
+    - find $TESTWEB_PATH/wallet -name "*.html" -exec chmod 644 {} \;
+    - find $TESTWEB_PATH/wallet -name "*.js" -exec chmod 644 {} \;
+    - find $TESTWEB_PATH/wallet -name "*.css" -exec chmod 644 {} \;
+    - find $TESTWEB_PATH/wallet -name "*.json" -exec chmod 644 {} \;
+    - chmod 644 $TESTWEB_PATH/.htaccess 2>/dev/null || true
     
     # Install/update dependencies for main bot
-    - echo "📦 Installing/updating dependencies..."
+    - echo "Installing/updating dependencies..."
     - cd $DEPLOYPATH && npm install --production
     
     # Restart PM2 process
-    - echo "🔄 Restarting bot application..."
-    - pm2 restart marcreator-bot || pm2 start $DEPLOYPATH/src/app.js --name marcreator-bot
+    - echo "Restarting bot application..."
+    - pm2 restart marcreator-bot 2>/dev/null || pm2 start $DEPLOYPATH/src/app.js --name marcreator-bot
     
     # Create deployment log
-    - echo "📝 Creating deployment log..."
+    - echo "Creating deployment log..."
     - date > $DEPLOYPATH/deployment.log
     - echo "Botomics Wallet deployed to: $TESTWEB_PATH/wallet/" >> $DEPLOYPATH/deployment.log
     - echo "Main bot deployed to: $DEPLOYPATH" >> $DEPLOYPATH/deployment.log
     
     # Final message
-    - echo "✅ Deployment completed successfully!"
-    - echo "   Main Bot: https://marcreator-bot.com"
-    - echo "   Wallet: https://testweb.maroset.com/wallet"
-    - echo "   API Endpoint: https://testweb.maroset.com/api/"
+    - echo "Deployment completed successfully!"
+    - echo "Main Bot: https://marcreator-bot.com"
+    - echo "Wallet: https://testweb.maroset.com/wallet"
+    - echo "API Endpoint: https://testweb.maroset.com/api/"
