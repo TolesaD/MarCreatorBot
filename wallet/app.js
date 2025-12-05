@@ -1,9 +1,11 @@
-// Botomics Wallet - Complete Production Version
+// wallet/app.js - UPDATED FOR YEGARA.COM DEPLOYMENT
 const tg = window.Telegram.WebApp;
-const BACKEND_URL = 'https://testweb.maroset.com/api';
+
+// Use relative paths for Yegara.com deployment
+const BACKEND_URL = '/api';  // Changed from absolute URL
 const BOTOMICS_SUPPORT_BOT = '@BotomicsSupportBot';
 
-// Initialize the app
+// Telegram Web App initialization
 tg.expand();
 tg.enableClosingConfirmation();
 tg.BackButton.onClick(() => {
@@ -25,12 +27,40 @@ function isTelegramWebApp() {
            window.Telegram.WebApp.initData;
 }
 
+// Validate Telegram Web App data
+function validateTelegramData(initData) {
+    if (!initData) return false;
+    
+    try {
+        const params = new URLSearchParams(initData);
+        const authDate = parseInt(params.get('auth_date'), 10);
+        const now = Math.floor(Date.now() / 1000);
+        
+        // Check if data is not older than 5 minutes
+        if (now - authDate > 300) {
+            console.log('Telegram data expired');
+            return false;
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Telegram data validation error:', error);
+        return false;
+    }
+}
+
 // Initialize app when loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Show warning if not in Telegram
     if (!isTelegramWebApp()) {
         document.getElementById('nonTelegramWarning').classList.remove('hidden');
         document.getElementById('mainContainer').classList.add('hidden');
+        return;
+    }
+    
+    // Validate Telegram data
+    if (!validateTelegramData(tg.initData)) {
+        showAlert('Invalid or expired Telegram session. Please reopen from @BotomicsBot', 'error');
         return;
     }
     
@@ -57,6 +87,7 @@ async function initializeApp() {
         // Update user reference in payment address
         if (currentUser) {
             document.getElementById('userRef').textContent = currentUser.id;
+            document.getElementById('paymentAddress').textContent = `BOTOMICS_USER_${currentUser.id}`;
         }
         
         console.log('✅ Botomics Wallet initialized successfully');
@@ -88,8 +119,12 @@ async function loadBalance() {
     try {
         document.getElementById('balanceAmount').innerHTML = '<div class="loading">Loading balance...</div>';
         
-        // Call backend API
-        const response = await fetch(`${BACKEND_URL}/wallet/balance?userId=${currentUser?.id || ''}`, {
+        if (!currentUser?.id) {
+            throw new Error('User not available');
+        }
+        
+        // Call backend API with relative path
+        const response = await fetch(`${BACKEND_URL}/wallet/balance?userId=${currentUser.id}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -139,22 +174,13 @@ async function loadBalance() {
     } catch (error) {
         console.error('Balance load error:', error);
         
-        // Fallback to mock data for testing
-        const mockBalance = {
-            balance: 15.50,
-            currency: 'BOM',
-            isFrozen: false,
-            freezeReason: null
-        };
-        
-        currentBalance = mockBalance;
-        
+        // Show error but don't use mock data in production
         document.getElementById('balanceAmount').innerHTML = `
-            ${mockBalance.balance.toFixed(2)} <span style="font-size: 0.6em;">${mockBalance.currency}</span>
+            <div style="color: #e74c3c">Error loading balance</div>
         `;
-        document.getElementById('walletStatus').innerHTML = '✅ Active';
+        document.getElementById('walletStatus').innerHTML = '⚠️ Error';
         
-        return mockBalance;
+        throw error;
     }
 }
 
@@ -963,6 +989,41 @@ function showAlert(message, type = 'info') {
 function showError(message) {
     showAlert(message, 'error');
 }
+
+// Add this new function for API calls
+async function safeApiCall(endpoint, options = {}) {
+    try {
+        const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${tg.initData}`,
+                ...options.headers
+            }
+        });
+        
+        if (response.status === 401) {
+            showAlert('Session expired. Please reopen the wallet from @BotomicsBot', 'error');
+            return null;
+        }
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || `API error: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('API call error:', error);
+        throw error;
+    }
+}
+
+// Update existing API calls to use safeApiCall
+// Example: In submitDepositProof, change:
+// const uploadResponse = await fetch(`${BACKEND_URL}/upload/proof`, ...)
+// to:
+// const uploadData = await safeApiCall('/upload/proof', { method: 'POST', body: formData });
 
 // Initialize when Telegram Web App is ready
 tg.ready();

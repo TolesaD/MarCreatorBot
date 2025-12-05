@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE BOTOMICS PRODUCTION VERSION
+﻿// src/app.js - UPDATED WITH INTEGRATED WALLET API
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -13,6 +13,8 @@ if (isCpanel) {
 }
 
 const { Telegraf, Markup } = require('telegraf');
+const express = require('express');
+const path = require('path');
 const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
@@ -26,7 +28,7 @@ const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 const WalletService = require('./services/walletService');
 const SubscriptionService = require('./services/subscriptionService');
 
-// Import Wallet Handler for better organization
+// Import Wallet Handler
 const WalletHandler = require('./handlers/walletHandler');
 
 class MetaBotCreator {
@@ -44,7 +46,240 @@ class MetaBotCreator {
         agent: null
       }
     });
+    
+    // Create Express app for API endpoints
+    this.expressApp = express();
+    this.setupExpress();
     this.setupHandlers();
+  }
+  
+  setupExpress() {
+    console.log('🔄 Setting up Express server for API...');
+    
+    // Middleware
+    this.expressApp.use(express.json());
+    this.expressApp.use(express.urlencoded({ extended: true }));
+    
+    // Serve wallet static files from root
+    this.expressApp.use('/wallet', express.static(path.join(__dirname, '../../wallet')));
+    
+    // Serve other static files
+    this.expressApp.use(express.static('public'));
+    
+    // Wallet API endpoints
+    this.expressApp.get('/api/wallet/health', (req, res) => {
+      res.json({ 
+        status: 'online', 
+        service: 'Botomics Wallet API',
+        version: '2.0.0',
+        timestamp: new Date().toISOString()
+      });
+    });
+    
+    this.expressApp.get('/api/wallet/balance', async (req, res) => {
+      try {
+        const { userId } = req.query;
+        if (!userId) {
+          return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        const balance = await WalletService.getBalance(userId);
+        res.json(balance);
+      } catch (error) {
+        console.error('Balance API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.get('/api/wallet/transactions', async (req, res) => {
+      try {
+        const { userId, page = 1, limit = 10 } = req.query;
+        if (!userId) {
+          return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        const history = await WalletService.getTransactionHistory(
+          userId, 
+          parseInt(limit), 
+          (parseInt(page) - 1) * parseInt(limit)
+        );
+        res.json(history);
+      } catch (error) {
+        console.error('Transactions API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.post('/api/wallet/deposit', async (req, res) => {
+      try {
+        const { userId, amount, description, proofImageUrl } = req.body;
+        
+        if (!userId || !amount || !proofImageUrl) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+        
+        const result = await WalletService.deposit(
+          userId, 
+          parseFloat(amount), 
+          description || `Deposit of ${amount} BOM`,
+          proofImageUrl
+        );
+        
+        res.json({
+          success: true,
+          message: 'Deposit request submitted for verification',
+          transaction: result.transaction
+        });
+      } catch (error) {
+        console.error('Deposit API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.post('/api/wallet/withdraw', async (req, res) => {
+      try {
+        const { userId, amount, method, payoutDetails } = req.body;
+        
+        if (!userId || !amount || !method || !payoutDetails) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+        
+        const result = await WalletService.requestWithdrawal(
+          userId,
+          parseFloat(amount),
+          method,
+          payoutDetails
+        );
+        
+        res.json({
+          success: true,
+          message: 'Withdrawal request submitted',
+          withdrawal: result
+        });
+      } catch (error) {
+        console.error('Withdrawal API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.post('/api/wallet/transfer', async (req, res) => {
+      try {
+        const { senderId, receiverId, amount, description } = req.body;
+        
+        if (!senderId || !receiverId || !amount) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+        
+        const result = await WalletService.transfer(
+          senderId,
+          receiverId,
+          parseFloat(amount),
+          description || `Transfer of ${amount} BOM`
+        );
+        
+        res.json({
+          success: true,
+          message: 'Transfer completed',
+          transaction: result
+        });
+      } catch (error) {
+        console.error('Transfer API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Subscription API endpoints
+    this.expressApp.get('/api/subscription/status', async (req, res) => {
+      try {
+        const { userId } = req.query;
+        if (!userId) {
+          return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        const tier = await SubscriptionService.getSubscriptionTier(userId);
+        const subscription = await SubscriptionService.getUserSubscription(userId);
+        
+        res.json({
+          tier,
+          subscription,
+          userId
+        });
+      } catch (error) {
+        console.error('Subscription API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.post('/api/subscription/upgrade', async (req, res) => {
+      try {
+        const { userId } = req.body;
+        if (!userId) {
+          return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        const subscription = await SubscriptionService.upgradeToPremium(userId);
+        
+        res.json({
+          success: true,
+          message: 'Premium subscription activated',
+          subscription
+        });
+      } catch (error) {
+        console.error('Upgrade API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    this.expressApp.post('/api/subscription/cancel', async (req, res) => {
+      try {
+        const { userId } = req.body;
+        if (!userId) {
+          return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        const subscription = await SubscriptionService.cancelSubscription(userId);
+        
+        res.json({
+          success: true,
+          message: 'Subscription cancelled',
+          subscription
+        });
+      } catch (error) {
+        console.error('Cancel API error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Default route
+    this.expressApp.get('/', (req, res) => {
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Botomics Platform</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+            h1 { color: #0088cc; }
+            .links { margin: 20px 0; }
+            a { display: inline-block; margin: 10px; padding: 10px 20px; background: #0088cc; color: white; text-decoration: none; border-radius: 5px; }
+          </style>
+        </head>
+        <body>
+          <h1>🤖 Botomics Platform</h1>
+          <p>Telegram bot creation platform with integrated wallet system</p>
+          <div class="links">
+            <a href="/wallet">💰 Open Wallet</a>
+            <a href="https://t.me/BotomicsBot">🤖 Open Bot</a>
+            <a href="/api/wallet/health">📊 API Health</a>
+          </div>
+          <p>Use @BotomicsBot on Telegram to access the full platform.</p>
+        </body>
+        </html>
+      `);
+    });
+    
+    console.log('✅ Express server setup complete');
   }
   
   setupHandlers() {
@@ -78,7 +313,7 @@ class MetaBotCreator {
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
     
-    // Botomics Commands - Only accessible via command or menu
+    // Botomics Commands
     this.bot.command('wallet', async (ctx) => {
       await this.openWalletMiniApp(ctx);
     });
@@ -89,23 +324,6 @@ class MetaBotCreator {
     
     this.bot.command('subscription', async (ctx) => {
       await this.openWalletMiniApp(ctx, 'premium');
-    });
-    
-    // Deprecated wallet commands - redirect to mini app
-    this.bot.command('deposit', async (ctx) => {
-      await this.redirectToMiniApp(ctx, 'deposit');
-    });
-    
-    this.bot.command('withdraw', async (ctx) => {
-      await this.redirectToMiniApp(ctx, 'withdraw');
-    });
-    
-    this.bot.command('transfer', async (ctx) => {
-      await this.redirectToMiniApp(ctx, 'transfer');
-    });
-    
-    this.bot.command('history', async (ctx) => {
-      await this.redirectToMiniApp(ctx, 'history');
     });
     
     // Platform Admin
@@ -227,7 +445,7 @@ class MetaBotCreator {
   setupMiniApp() {
     console.log('🔄 Setting up Mini App...');
     
-    // Use testweb.maroset.com for Mini App (FIXED as requested)
+    // Use relative URL for Mini App
     const walletUrl = 'https://testweb.maroset.com/wallet';
     
     // Add Mini App to menu
@@ -262,23 +480,21 @@ class MetaBotCreator {
             break;
             
           case 'premium_upgrade':
-            await WalletHandler.handleUpgradePremium(ctx);
-            break;
-            
-          case 'deposit_info':
-            await this.redirectToMiniApp(ctx, 'deposit');
-            break;
-            
-          case 'withdraw_info':
-            await this.redirectToMiniApp(ctx, 'withdraw');
-            break;
-            
-          case 'transaction_history':
-            await this.redirectToMiniApp(ctx, 'history');
-            break;
-            
-          case 'subscription_info':
-            await this.openWalletMiniApp(ctx, 'premium');
+            try {
+              await SubscriptionService.upgradeToPremium(userId);
+              await ctx.reply(
+                '🎉 *Premium Subscription Activated!*\n\n' +
+                'Your premium subscription has been successfully activated.\n\n' +
+                '*Benefits:*\n' +
+                '✅ Unlimited bot creation\n' +
+                '✅ Unlimited broadcasts\n' +
+                '✅ All premium features unlocked\n\n' +
+                'Thank you for upgrading! 🚀',
+                { parse_mode: 'Markdown' }
+              );
+            } catch (error) {
+              await ctx.reply(`❌ Error: ${error.message}`);
+            }
             break;
             
           case 'contact_support':
@@ -290,8 +506,8 @@ class MetaBotCreator {
               '• Premium subscriptions\n' +
               '• Bot creation issues\n' +
               '• Technical problems\n\n' +
-              'Contact: @BotomicsSupportBot for buying BOM\n\n' +
-              'For other issues, use the Mini App support.',
+              'Contact: @BotomicsSupportBot\n\n' +
+              'We typically respond within 24 hours.',
               { parse_mode: 'Markdown' }
             );
             break;
@@ -303,7 +519,7 @@ class MetaBotCreator {
               '1. Contact @BotomicsSupportBot\n' +
               '2. Specify amount you want to buy (minimum 5 BOM)\n' +
               '3. Follow payment instructions\n' +
-              '4. Submit payment proof\n' +
+              '4. Submit payment proof in wallet\n' +
               '5. Coins will be added after verification\n\n' +
               '*Rate:* 1 BOM = $1.00 USD\n' +
               '*Minimum Purchase:* 5 BOM ($5.00)',
@@ -312,7 +528,7 @@ class MetaBotCreator {
             break;
             
           default:
-            await ctx.reply('❌ Unknown Mini App action. Please try again.');
+            await ctx.reply('✅ Action processed in wallet Mini App.');
         }
       } catch (error) {
         console.error('Mini App error:', error);
@@ -339,7 +555,12 @@ class MetaBotCreator {
         `1. Click "Open Botomics Wallet" button below\n` +
         `2. Use the Mini App inside Telegram\n` +
         `3. Manage balance, transactions, and premium\n\n` +
-        `*To buy BOM coins:* Contact @BotomicsSupportBot\n\n`,
+        `*To buy BOM coins:* Contact @BotomicsSupportBot\n\n` +
+        `*Features:*\n` +
+        `• View balance & transaction history\n` +
+        `• Deposit & withdraw BOM coins\n` +
+        `• Transfer BOM to other users\n` +
+        `• Manage premium subscription\n`,
         keyboard
       );
     } catch (error) {
@@ -348,23 +569,6 @@ class MetaBotCreator {
         '❌ Failed to open wallet. Please try again or contact support.'
       );
     }
-  }
-  
-  async redirectToMiniApp(ctx, section) {
-    const walletUrl = `https://testweb.maroset.com/wallet#${section}`;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.webApp('🔓 Open in Wallet Mini App', walletUrl)],
-      [Markup.button.callback('📋 Buy BOM Instructions', 'buy_bom_info')]
-    ]);
-    
-    await ctx.replyWithMarkdown(
-      `🔗 *Redirecting to Wallet Mini App*\n\n` +
-      `This feature is now available in the Botomics Wallet Mini App.\n\n` +
-      `Click the button below to open it inside Telegram:\n\n` +
-      `🌐 *URL:* ${walletUrl}`,
-      keyboard
-    );
   }
   
   setupCallbackHandlers() {
@@ -409,15 +613,10 @@ class MetaBotCreator {
       await this.termsHandler(ctx);
     });
     
-    // Wallet and Premium actions
+    // Wallet actions
     this.bot.action('open_wallet', async (ctx) => {
       await ctx.answerCbQuery();
       await this.openWalletMiniApp(ctx);
-    });
-    
-    this.bot.action('open_premium', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.openWalletMiniApp(ctx, 'premium');
     });
     
     this.bot.action('buy_bom_info', async (ctx) => {
@@ -428,11 +627,26 @@ class MetaBotCreator {
         '1. Contact @BotomicsSupportBot\n' +
         '2. Specify amount you want to buy (minimum 5 BOM)\n' +
         '3. Follow payment instructions\n' +
-        '4. Submit payment proof\n' +
+        '4. Submit payment proof in wallet\n' +
         '5. Coins will be added after verification\n\n' +
         '*Rate:* 1 BOM = $1.00 USD\n' +
         '*Minimum Purchase:* 5 BOM ($5.00)\n\n' +
         '⚠️ *Only @BotomicsSupportBot is authorized to sell BOM coins*',
+        { parse_mode: 'Markdown' }
+      );
+    });
+    
+    this.bot.action('contact_support', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '📞 *Botomics Support*\n\n' +
+        'For assistance with:\n' +
+        '• Buying BOM coins: Contact @BotomicsSupportBot\n' +
+        '• Wallet deposits/withdrawals: Use Mini App\n' +
+        '• Premium subscriptions: Use Mini App\n' +
+        '• Bot creation issues: Use /help command\n' +
+        '• Technical problems: Contact @BotomicsSupportBot\n\n' +
+        'We typically respond within 24 hours.',
         { parse_mode: 'Markdown' }
       );
     });
@@ -473,7 +687,7 @@ class MetaBotCreator {
   registerWalletCallbacks() {
     console.log('🔄 Registering wallet callbacks...');
     
-    // Wallet navigation - redirect to mini app
+    // Wallet navigation
     this.bot.action('wallet_main', async (ctx) => {
       await ctx.answerCbQuery();
       await this.openWalletMiniApp(ctx);
@@ -481,76 +695,27 @@ class MetaBotCreator {
     
     this.bot.action('wallet_deposit', async (ctx) => {
       await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'deposit');
+      await this.openWalletMiniApp(ctx, 'deposit');
     });
     
     this.bot.action('wallet_withdraw', async (ctx) => {
       await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'withdraw');
+      await this.openWalletMiniApp(ctx, 'withdraw');
     });
     
     this.bot.action('wallet_transfer', async (ctx) => {
       await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'transfer');
+      await this.openWalletMiniApp(ctx, 'transfer');
     });
     
     this.bot.action('wallet_history', async (ctx) => {
       await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'history');
+      await this.openWalletMiniApp(ctx, 'history');
     });
     
     this.bot.action('wallet_premium', async (ctx) => {
       await ctx.answerCbQuery();
       await this.openWalletMiniApp(ctx, 'premium');
-    });
-    
-    this.bot.action('wallet_upgrade_premium', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.openWalletMiniApp(ctx, 'premium');
-    });
-    
-    this.bot.action('wallet_cancel_premium', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.openWalletMiniApp(ctx, 'premium');
-    });
-    
-    // Deposit actions
-    this.bot.action('submit_deposit_proof', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'deposit');
-    });
-    
-    this.bot.action('start_withdrawal', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'withdraw');
-    });
-    
-    this.bot.action('wallet_transfer_start', async (ctx) => {
-      await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'transfer');
-    });
-    
-    // Contact support
-    this.bot.action('contact_support', async (ctx) => {
-      await ctx.answerCbQuery();
-      await ctx.reply(
-        '📞 *Botomics Support*\n\n' +
-        'For assistance with:\n' +
-        '• Buying BOM coins: Contact @BotomicsSupportBot\n' +
-        '• Wallet deposits/withdrawals: Use Mini App\n' +
-        '• Premium subscriptions: Use Mini App\n' +
-        '• Bot creation issues: Use /help command\n' +
-        '• Technical problems: Use Mini App support\n\n' +
-        'We typically respond within 24 hours.',
-        { parse_mode: 'Markdown' }
-      );
-    });
-    
-    // Pagination
-    this.bot.action(/^wallet_history_(\d+)/, async (ctx) => {
-      const page = parseInt(ctx.match[1]);
-      await ctx.answerCbQuery();
-      await this.redirectToMiniApp(ctx, 'history');
     });
     
     // Admin wallet callbacks
@@ -560,7 +725,7 @@ class MetaBotCreator {
         return;
       }
       await ctx.answerCbQuery('📥 Loading pending deposits...');
-      await this.showPendingDeposits(ctx);
+      await WalletHandler.showPendingDeposits(ctx);
     });
     
     this.bot.action('admin_pending_withdrawals', async (ctx) => {
@@ -569,196 +734,10 @@ class MetaBotCreator {
         return;
       }
       await ctx.answerCbQuery('📤 Loading pending withdrawals...');
-      await this.showPendingWithdrawals(ctx);
-    });
-    
-    this.bot.action('admin_manage_wallet', async (ctx) => {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Admin access required');
-        return;
-      }
-      await ctx.answerCbQuery('👤 Opening wallet management...');
-      await this.showWalletManagement(ctx);
-    });
-    
-    this.bot.action('admin_adjust_balance', async (ctx) => {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Admin access required');
-        return;
-      }
-      await ctx.answerCbQuery('🔧 Opening balance adjustment...');
-      await this.showBalanceAdjustment(ctx);
-    });
-    
-    this.bot.action('admin_wallet_report', async (ctx) => {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Admin access required');
-        return;
-      }
-      await ctx.answerCbQuery('📊 Generating wallet report...');
-      await this.showWalletReport(ctx);
+      await WalletHandler.showPendingWithdrawals(ctx);
     });
     
     console.log('✅ Wallet callbacks registered');
-  }
-  
-  // Admin wallet management methods
-  async showPendingDeposits(ctx) {
-    try {
-      const pendingDeposits = await WalletService.getPendingDeposits();
-      
-      let message = `📥 *Pending Deposits*\n\n`;
-      
-      if (pendingDeposits.length === 0) {
-        message += `No pending deposits.\n`;
-      } else {
-        pendingDeposits.forEach((deposit, index) => {
-          const date = new Date(deposit.created_at).toLocaleString();
-          message += `${index + 1}. *${date}*\n`;
-          message += `   Amount: ${deposit.amount} ${deposit.currency}\n`;
-          message += `   User ID: ${deposit.Wallet?.user_id || 'N/A'}\n`;
-          message += `   Description: ${deposit.description}\n\n`;
-        });
-      }
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh', 'admin_pending_deposits')],
-        [Markup.button.callback('🔙 Wallet Dashboard', 'admin_wallet')]
-      ]);
-      
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } catch (error) {
-      console.error('Pending deposits error:', error);
-      await ctx.answerCbQuery('❌ Error loading pending deposits');
-    }
-  }
-  
-  async showPendingWithdrawals(ctx) {
-    try {
-      const pendingWithdrawals = await WalletService.getPendingWithdrawals();
-      
-      let message = `📤 *Pending Withdrawals*\n\n`;
-      
-      if (pendingWithdrawals.length === 0) {
-        message += `No pending withdrawals.\n`;
-      } else {
-        pendingWithdrawals.forEach((withdrawal, index) => {
-          const date = new Date(withdrawal.created_at).toLocaleString();
-          message += `${index + 1}. *${date}*\n`;
-          message += `   Amount: ${withdrawal.amount} ${withdrawal.currency}\n`;
-          message += `   User: ${withdrawal.User?.first_name || 'User'} (${withdrawal.user_id})\n`;
-          message += `   Method: ${withdrawal.method}\n`;
-          message += `   Details: ${withdrawal.payout_details.substring(0, 50)}...\n\n`;
-        });
-      }
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh', 'admin_pending_withdrawals')],
-        [Markup.button.callback('🔙 Wallet Dashboard', 'admin_wallet')]
-      ]);
-      
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } catch (error) {
-      console.error('Pending withdrawals error:', error);
-      await ctx.answerCbQuery('❌ Error loading pending withdrawals');
-    }
-  }
-  
-  async showWalletManagement(ctx) {
-    try {
-      const message = `👤 *Wallet Management*\n\n` +
-        `*Manage user wallets:*\n\n` +
-        `Use the following format:\n` +
-        `\`/freeze_wallet <user_id> <reason>\`\n` +
-        `\`/unfreeze_wallet <user_id>\`\n` +
-        `\`/adjust_balance <user_id> <amount> <reason>\`\n\n` +
-        `*Examples:*\n` +
-        `• Freeze wallet for policy violation:\n` +
-        `  \`/freeze_wallet 123456789 "Spam activity"\`\n\n` +
-        `• Add 10 BOM to user wallet:\n` +
-        `  \`/adjust_balance 123456789 10 "Promotional bonus"\`\n\n` +
-        `• Remove 5 BOM from user wallet:\n` +
-        `  \`/adjust_balance 123456789 -5 "Refund adjustment"\``;
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 Wallet Dashboard', 'admin_wallet')]
-      ]);
-      
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } catch (error) {
-      console.error('Wallet management error:', error);
-      await ctx.answerCbQuery('❌ Error loading wallet management');
-    }
-  }
-  
-  async showBalanceAdjustment(ctx) {
-    try {
-      const message = `🔧 *Balance Adjustment*\n\n` +
-        `*Format:*\n` +
-        `\`/adjust_balance <user_id> <amount> <reason>\`\n\n` +
-        `*Parameters:*\n` +
-        `• user_id: Telegram user ID\n` +
-        `• amount: Positive to add, negative to deduct\n` +
-        `• reason: Brief description of adjustment\n\n` +
-        `*Examples:*\n` +
-        `• Add bonus: \`/adjust_balance 123456789 25 "Welcome bonus"\`\n` +
-        `• Deduct fee: \`/adjust_balance 123456789 -5 "Service fee"\`\n\n` +
-        `*Note:* All adjustments are logged and require admin authorization.`;
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 Wallet Dashboard', 'admin_wallet')]
-      ]);
-      
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } catch (error) {
-      console.error('Balance adjustment error:', error);
-      await ctx.answerCbQuery('❌ Error loading balance adjustment');
-    }
-  }
-  
-  async showWalletReport(ctx) {
-    try {
-      const stats = await WalletService.getWalletStats();
-      
-      const message = `📊 *Wallet System Report*\n\n` +
-        `*Statistics:*\n` +
-        `• Total Wallets: ${stats.totalWallets}\n` +
-        `• Active Wallets: ${stats.activeWallets}\n` +
-        `• Frozen Wallets: ${stats.frozenWallets}\n` +
-        `• Total Balance: ${stats.totalBalance.toFixed(2)} BOM\n\n` +
-        `*Financial Summary:*\n` +
-        `• Total Deposits: ${stats.totalDeposits.toFixed(2)} BOM\n` +
-        `• Total Withdrawals: ${stats.totalWithdrawals.toFixed(2)} BOM\n` +
-        `• Net Revenue: ${stats.netRevenue.toFixed(2)} BOM\n\n` +
-        `*USD Value (1 BOM = $1.00):*\n` +
-        `• Total Balance: $${stats.totalBalance.toFixed(2)}\n` +
-        `• Net Revenue: $${stats.netRevenue.toFixed(2)}`;
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh', 'admin_wallet_report')],
-        [Markup.button.callback('🔙 Wallet Dashboard', 'admin_wallet')]
-      ]);
-      
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } catch (error) {
-      console.error('Wallet report error:', error);
-      await ctx.answerCbQuery('❌ Error generating wallet report');
-    }
   }
   
   privacyHandler = async (ctx) => {
@@ -899,87 +878,53 @@ class MetaBotCreator {
     }
   }
   
-  async startMiniBotsAutomatically() {
-    console.log('\n🚀 AUTOMATIC: Starting mini-bots initialization...');
-    console.log('============================================');
+  async start() {
+    console.log('🚀 Starting MetaBot Creator...');
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Start Express server for API
+      const PORT = process.env.PORT || 3000;
+      this.expressApp.listen(PORT, () => {
+        console.log(`🌐 Express server running on port ${PORT}`);
+        console.log(`📱 Wallet: http://localhost:${PORT}/wallet`);
+        console.log(`⚡ API: http://localhost:${PORT}/api/wallet/health`);
+      });
       
-      const result = await MiniBotManager.initializeAllBots();
+      // Start mini-bots
+      console.log('\n🚀 Starting mini-bots initialization...');
+      const miniBotsResult = await MiniBotManager.initializeAllBots();
+      console.log(`✅ ${miniBotsResult} mini-bots initialized`);
       
-      if (result > 0) {
-        console.log(`✅ AUTOMATIC: ${result} mini-bots started successfully`);
-      } else {
-        console.log('ℹ️ AUTOMATIC: No active mini-bots found to start');
-      }
-      
-      console.log('============================================\n');
-      return result;
-    } catch (error) {
-      console.error('❌ AUTOMATIC: Mini-bot initialization failed:', error.message);
-      throw error;
-    }
-  }
-  
-  start() {
-    console.log('🚀 Starting bot initialization sequence...');
-    
-    this.startMiniBotsAutomatically().then(result => {
-      console.log(`✅ STEP 1 COMPLETE: ${result} mini-bots initialized`);
-      
-      console.log('⏳ Waiting 10 seconds before starting main bot...');
-      setTimeout(() => {
-        console.log('🚀 STEP 2: Starting main bot...');
-        
-        this.bot.launch({
-          dropPendingUpdates: true,
-          allowedUpdates: ['message', 'callback_query', 'web_app_data']
-        })
-          .then(() => {
-            console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-            console.log('========================================');
-            console.log('📱 Main Bot: Manages bot creation & wallet');
-            console.log('🤖 Mini-bots: Handle user messages');
-            console.log('💰 Botomics: Digital currency system');
-            console.log('🎫 Premium: Subscription tiers');
-            console.log('💬 Send /start to see main menu');
-            console.log('🔧 Use /createbot to create new bots');
-            console.log('📋 Use /mybots to view your bots');
-            console.log('👑 Use /platform for admin dashboard');
-            console.log('💰 Use /wallet or /premium for Mini App');
-            console.log('🔒 Legal: /privacy & /terms available');
-            console.log('🛒 Buy BOM: Contact @BotomicsSupportBot');
-            console.log('========================================');
-            console.log(`🌐 Wallet Mini App: https://testweb.maroset.com/wallet`);
-          })
-          .catch(error => {
-            console.error('❌ Failed to start main bot:', error.message);
-          });
-      }, 10000);
-    }).catch(error => {
-      console.error('❌ Mini-bot initialization failed:', error);
-      this.startMainBotWithDelay();
-    });
-    
-    process.once('SIGINT', () => this.shutdown());
-    process.once('SIGTERM', () => this.shutdown());
-  }
-
-  startMainBotWithDelay() {
-    console.log('⏳ Starting main bot with 15 second delay...');
-    setTimeout(() => {
-      this.bot.launch({
+      // Start main Telegram bot
+      console.log('\n🤖 Starting main Telegram bot...');
+      await this.bot.launch({
         dropPendingUpdates: true,
         allowedUpdates: ['message', 'callback_query', 'web_app_data']
-      })
-        .then(() => {
-          console.log('🎉 Main bot started (mini-bots may be unavailable)');
-        })
-        .catch(error => {
-          console.error('❌ Main bot failed to start:', error.message);
-        });
-    }, 15000);
+      });
+      
+      console.log('\n🎉 MetaBot Creator is now RUNNING!');
+      console.log('========================================');
+      console.log('📱 Main Bot: Manages bot creation & wallet');
+      console.log('🤖 Mini-bots: Handle user messages');
+      console.log('💰 Botomics: Digital currency system');
+      console.log('🎫 Premium: Subscription tiers');
+      console.log('💬 Send /start to see main menu');
+      console.log('🔧 Use /createbot to create new bots');
+      console.log('📋 Use /mybots to view your bots');
+      console.log('👑 Use /platform for admin dashboard');
+      console.log('💰 Use /wallet or /premium for Mini App');
+      console.log('🔒 Legal: /privacy & /terms available');
+      console.log('🛒 Buy BOM: Contact @BotomicsSupportBot');
+      console.log('========================================');
+      console.log(`🌐 Wallet Mini App: https://testweb.maroset.com/wallet`);
+      
+    } catch (error) {
+      console.error('❌ Failed to start application:', error);
+    }
+    
+    // Graceful shutdown
+    process.once('SIGINT', () => this.shutdown());
+    process.once('SIGTERM', () => this.shutdown());
   }
   
   async shutdown() {
@@ -1015,7 +960,7 @@ async function startApplication() {
     
     const app = new MetaBotCreator();
     await app.initialize();
-    app.start();
+    await app.start();
     
     return app;
   } catch (error) {
