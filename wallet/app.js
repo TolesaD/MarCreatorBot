@@ -283,7 +283,7 @@ function updateSubscriptionUI(subscription) {
                 <p><strong>Start Date:</strong> ${startDate}</p>
                 <p><strong>Next Billing:</strong> ${nextBilling}</p>
                 <p><strong>Auto-renewal:</strong> ${subscription.autoRenew ? 'Enabled' : 'Disabled'}</p>
-                <p><strong>Monthly Cost:</strong> 5 BOM ($5.00)</p>
+                <p><strong>Monthly Cost:</strong> 3 BOM ($3.00)</p>
             </div>
         `;
         
@@ -310,10 +310,10 @@ function updateSubscriptionUI(subscription) {
         
         actionsElement.innerHTML = `
             <button class="btn-primary" onclick="upgradeToPremium('monthly')" id="upgradePremiumBtn">
-                💎 Upgrade to Premium - 5 BOM/month
+                💎 Upgrade to Premium - 3 BOM/month
             </button>
             <button class="btn-secondary" onclick="upgradeToPremium('yearly')">
-                🏆 Upgrade Yearly - 50 BOM/year (Save 17%)
+                🏆 Upgrade Yearly - 30 BOM/year (Save 17%)
             </button>
         `;
     }
@@ -793,7 +793,7 @@ async function submitTransfer() {
 }
 
 async function upgradeToPremium(plan) {
-    const price = plan === 'yearly' ? 50 : 5;
+    const price = plan === 'yearly' ? 30 : 3;
     const period = plan === 'yearly' ? 'year' : 'month';
     
     if (!confirm(`Upgrade to Premium for ${price} BOM per ${period}? This will auto-renew until cancelled.`)) {

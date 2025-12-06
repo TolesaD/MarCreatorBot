@@ -362,7 +362,7 @@ app.post('/api/subscription/upgrade', authenticate, async (req, res) => {
                 user_id: userId,
                 tier: 'premium',
                 status: 'active',
-                monthly_price: 50/12, // Approximate monthly
+                monthly_price: 30/12, // Approximate monthly
                 currency: 'BOM',
                 current_period_start: now,
                 current_period_end: periodEnd,
