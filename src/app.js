@@ -883,64 +883,139 @@ class MetaBotCreator {
     }
   }
   
-  async start() {
+    async start() {
     console.log('🚀 Starting MetaBot Creator on Railway...');
     
     try {
-      const PORT = config.PORT;
-      const HOST = config.HOST;
+      const PORT = config.PORT || 3000;
+      const HOST = config.HOST || '0.0.0.0';
       
-      // Start Express server
-      this.expressApp.listen(PORT, HOST, () => {
-        console.log(`🌐 Express server running on ${HOST}:${PORT}`);
+      console.log(`🌐 Starting Express server FIRST on ${HOST}:${PORT}...`);
+      
+      // 1. START EXPRESS SERVER FIRST (critical for Railway health check!)
+      const server = this.expressApp.listen(PORT, HOST, () => {
+        console.log(`✅ Express server is NOW RUNNING on ${HOST}:${PORT}`);
+        console.log(`🌐 Health check: http://${HOST}:${PORT}/`);
+        console.log(`🌐 API Health: http://${HOST}:${PORT}/api/health`);
         console.log(`📱 Wallet: ${config.WALLET_URL || `http://${HOST}:${PORT}/wallet`}`);
-        console.log(`⚡ API: ${config.APP_URL || `http://${HOST}:${PORT}`}/api/health`);
         console.log(`🚀 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'Production'}`);
+        
+        // 2. Start all other services in background AFTER server is up
+        this.startBackgroundServices();
       });
       
-      // Start subscription auto-renewal cron jobs
-      console.log('\n⏰ Starting subscription cron jobs...');
-      SubscriptionCron.start();
-      console.log('✅ Subscription auto-renewal system started');
-      
-      // Initialize mini-bots
-      console.log('\n🚀 Starting mini-bots initialization...');
-      const miniBotsResult = await MiniBotManager.initializeAllBots();
-      console.log(`✅ ${miniBotsResult} mini-bots initialized`);
-      
-      // Start main Telegram bot
-      console.log('\n🤖 Starting main Telegram bot...');
-      await this.bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'web_app_data']
+      // Handle server errors
+      server.on('error', (error) => {
+        console.error('❌ Express server failed to start:', error);
+        if (error.code === 'EADDRINUSE') {
+          console.error('💡 Port already in use. Railway might assign a different port.');
+        }
+        process.exit(1);
       });
-      
-      // Success message
-      console.log('\n🎉 MetaBot Creator is now RUNNING on Railway!');
-      console.log('===============================================');
-      console.log('🚂 Platform: Railway');
-      console.log('📱 Main Bot: Manages bot creation & wallet');
-      console.log('🤖 Mini-bots: Handle user messages');
-      console.log('💰 Botomics: Digital currency system');
-      console.log('🎫 Premium: Subscription tiers (3 BOM/month)');
-      console.log('⏰ Auto-renewal: Enabled (daily cron)');
-      console.log('🏦 Admin Commands: /add_bom, /freeze_wallet');
-      console.log('===============================================');
-      console.log(`🌐 Dashboard: ${config.APP_URL || 'Railway URL'}`);
-      console.log(`💰 Wallet: ${config.WALLET_URL}`);
-      console.log(`💳 BOM Rate: 1 BOM = $1.00 USD`);
-      
-      if (config.WEBHOOK_URL) {
-        console.log(`🌐 Webhook URL: ${config.WEBHOOK_URL}`);
-      }
       
     } catch (error) {
-      console.error('❌ Failed to start application:', error);
+      console.error('❌ Failed to start server:', error);
+      process.exit(1);
     }
     
     // Graceful shutdown
     process.once('SIGINT', () => this.shutdown());
     process.once('SIGTERM', () => this.shutdown());
+  }
+  
+  async startBackgroundServices() {
+    console.log('\n🔧 Starting background services...');
+    
+    try {
+      // 1. Subscription cron jobs (lightweight, can start immediately)
+      console.log('⏰ Starting subscription cron jobs...');
+      SubscriptionCron.start();
+      console.log('✅ Subscription auto-renewal started');
+      
+      // 2. Wait a bit, then try database connection
+      setTimeout(async () => {
+        try {
+          console.log('\n🗄️ Attempting database connection...');
+          const { connectDB } = require('../database/db');
+          const dbConnected = await connectDB();
+          
+          if (dbConnected) {
+            // 3. Initialize mini-bots after DB is connected
+            console.log('\n🚀 Starting mini-bots initialization...');
+            const miniBotsResult = await MiniBotManager.initializeAllBots();
+            console.log(`✅ ${miniBotsResult} mini-bots initialized`);
+          } else {
+            console.warn('⚠️ Mini-bots delayed: Waiting for database connection');
+            // Try again in 10 seconds
+            setTimeout(async () => {
+              try {
+                console.log('\n🚀 Retrying mini-bots initialization...');
+                const miniBotsResult = await MiniBotManager.initializeAllBots();
+                console.log(`✅ ${miniBotsResult} mini-bots initialized (delayed start)`);
+              } catch (botError) {
+                console.error('❌ Mini-bot initialization failed:', botError.message);
+              }
+            }, 10000);
+          }
+        } catch (dbError) {
+          console.error('❌ Database connection failed:', dbError.message);
+          console.warn('⚠️ Mini-bots will start when database is available');
+        }
+      }, 2000); // Wait 2 seconds before DB connection
+      
+      // 4. Start main Telegram bot (with longer delay)
+      setTimeout(async () => {
+        try {
+          console.log('\n🤖 Starting main Telegram bot...');
+          await this.bot.launch({
+            dropPendingUpdates: true,
+            allowedUpdates: ['message', 'callback_query', 'web_app_data']
+          });
+          console.log('✅ Main Telegram bot started');
+          
+          // Success message
+          console.log('\n🎉 MetaBot Creator is fully RUNNING on Railway!');
+          console.log('===============================================');
+          console.log('🚂 Platform: Railway');
+          console.log('🌐 Express Server: ✅ Running');
+          console.log('🗄️ Database: Connecting...');
+          console.log('🤖 Main Bot: ✅ Active');
+          console.log('🤖 Mini-bots: Starting...');
+          console.log('💰 Botomics: Ready');
+          console.log('🎫 Premium: Auto-renewal active');
+          console.log('⏰ Auto-renewal: Enabled (daily cron)');
+          console.log('===============================================');
+          console.log(`🌐 Dashboard: ${config.APP_URL || `http://${config.HOST}:${config.PORT}`}`);
+          console.log(`💰 Wallet: ${config.WALLET_URL}`);
+          console.log(`💳 BOM Rate: 1 BOM = $1.00 USD`);
+          
+          if (config.WEBHOOK_URL) {
+            console.log(`🌐 Webhook URL: ${config.WEBHOOK_URL}`);
+          }
+          
+        } catch (botError) {
+          console.error('❌ Failed to start main bot:', botError.message);
+          console.warn('⚠️ Main bot will retry later');
+          
+          // Try again in 30 seconds
+          setTimeout(async () => {
+            try {
+              console.log('\n🤖 Retrying main bot startup...');
+              await this.bot.launch({
+                dropPendingUpdates: true,
+                allowedUpdates: ['message', 'callback_query', 'web_app_data']
+              });
+              console.log('✅ Main bot started (retry successful)');
+            } catch (retryError) {
+              console.error('❌ Main bot retry failed:', retryError.message);
+            }
+          }, 30000);
+        }
+      }, 5000); // Wait 5 seconds before starting main bot
+      
+    } catch (error) {
+      console.error('❌ Background services error:', error);
+    }
   }
   
   async shutdown() {
@@ -975,13 +1050,25 @@ async function startApplication() {
     console.log('🔧 Starting MetaBot Creator application on Railway...');
     
     const app = new MetaBotCreator();
-    await app.initialize();
+    
+    // Initialize app (non-blocking)
+    try {
+      await app.initialize();
+    } catch (initError) {
+      console.warn('⚠️ Initialization had issues, but continuing:', initError.message);
+    }
+    
+    // Start the app (this will start Express server immediately)
     await app.start();
     
     return app;
   } catch (error) {
     console.error('❌ Application failed to start:', error);
-    setTimeout(() => process.exit(1), 5000);
+    // Don't exit immediately - let Railway see the error
+    setTimeout(() => {
+      console.error('💥 Application startup failed completely');
+      process.exit(1);
+    }, 10000);
   }
 }
 
