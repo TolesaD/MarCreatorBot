@@ -106,7 +106,7 @@ class MetaBotCreator {
     this.expressApp.use('/wallet', express.static(walletPath));
     
     // Health endpoints
-    this.expressApp.get('/api/health', (req, res) => {
+    this.expressApp.get('/', (req, res) => {
       res.json({ 
         status: 'online', 
         service: 'Botomics Platform',
