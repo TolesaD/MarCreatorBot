@@ -452,7 +452,7 @@ class BanHandler {
     };
   }
 
-  // Show ban management interface to admins
+   // Show ban management interface to admins
   static async showBanManagement(ctx, botId) {
     try {
       const bannedUsers = await UserBan.count({
@@ -462,15 +462,15 @@ class BanHandler {
         }
       });
 
-      // FIXED: Clean ban management message without slashes and stars
-      const message = `🚫 *User Ban Management*\n\n` +
-        `*Currently Banned:* ${bannedUsers} users\n\n` +
-        `*Available Actions:*\n` +
+      // Simple message without complex formatting
+      const message = `🚫 User Ban Management\n\n` +
+        `Currently Banned: ${bannedUsers} users\n\n` +
+        `Available Actions:\n` +
         `• View all banned users\n` +
         `• Ban new users by username or ID\n` +
         `• Unban existing users\n` +
         `• Manage ban reasons\n\n` +
-        `*Usage:*\n` +
+        `Usage:\n` +
         `• Use /ban <username_or_id> <reason> to ban\n` +
         `• Use /unban <username_or_id> to unban\n` +
         `• Or use the buttons below`;
@@ -482,9 +482,9 @@ class BanHandler {
       ]);
 
       if (ctx.updateType === 'callback_query') {
-        await safeEditMessageWithMarkdown(ctx, message, keyboard);
+        await ctx.editMessageText(message, keyboard);
       } else {
-        await safeReplyWithMarkdown(ctx, message, keyboard);
+        await ctx.reply(message, keyboard);
       }
 
     } catch (error) {

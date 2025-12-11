@@ -91,7 +91,6 @@ class WalletHandler {
         `• Contact support for urgent requests`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.url('💼 Open Wallet Mini-App', 'https://testweb.maroset.com/wallet')],
         [Markup.button.url('📞 Contact Support', 'https://t.me/BotomicsSupportBot')],
         [Markup.button.callback('🔙 Back to Wallet', 'wallet_main')]
       ]);
@@ -127,7 +126,6 @@ class WalletHandler {
         `• Both users must have active wallets`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.url('🔄 Open Wallet Mini-App', 'https://testweb.maroset.com/wallet')],
         [Markup.button.callback('🔙 Back to Wallet', 'wallet_main')]
       ]);
       

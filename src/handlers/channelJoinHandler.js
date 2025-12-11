@@ -367,7 +367,7 @@ static async startAddChannel(ctx, botId) {
       message += `*Instructions:*\n` +
         `• Add your bot as admin to channels\n` +
         `• Use "Add Channel" to require joining\n` +
-        `• Users must join ALL channels to access bot`;
+        `• Users must join ALL channels to access this bot`;
 
       const keyboardButtons = [
         [Markup.button.callback('➕ Add Channel', `channel_add_${botId}`)],
@@ -394,7 +394,7 @@ static async startAddChannel(ctx, botId) {
       if (ctx.updateType === 'callback_query') {
         try {
           // Add a small random string to prevent "message not modified" error
-          const uniqueMessage = message + `\n\n_Last updated: ${Date.now()}_`;
+          const uniqueMessage = message + `\n\n_Last updated: ${new Date().toLocaleTimeString()}_`;
           await ctx.editMessageText(uniqueMessage, {
             parse_mode: 'Markdown',
             ...keyboard

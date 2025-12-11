@@ -562,6 +562,4 @@ async function ensureDirectories() {
 app.listen(PORT, async () => {
     await ensureDirectories();
     console.log(`🚀 Botomics Wallet Server running on port ${PORT}`);
-    console.log(`🌐 https://testweb.maroset.com/wallet`);
-    console.log(`⚡ API: https://testweb.maroset.com/api/health`);
 });

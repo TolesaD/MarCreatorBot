@@ -65,8 +65,8 @@ function createConfig() {
     RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
     
     // ==================== WALLET CONFIGURATION ====================
-    WALLET_URL: walletUrl || 'https://testweb.maroset.com/wallet',
-    APP_URL: appUrl,
+    WALLET_URL: process.env.WALLET_URL,
+    PUBLIC_URL: process.env.PUBLIC_URL,
     
     // ==================== PLATFORM ADMIN ====================
     PLATFORM_CREATOR_ID: process.env.PLATFORM_CREATOR_ID || '1827785384',

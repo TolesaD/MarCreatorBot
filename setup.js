@@ -45,7 +45,7 @@ DB_DIALECT=sqlite
 DB_STORAGE=./metabot_creator.db
 
 # Web App URL
-WEBAPP_URL=https://testweb.maroset.com
+APP_URL=${RAILWAY_STATIC_URL}
 
 # Platform Admin
 PLATFORM_CREATOR_ID=1827785384

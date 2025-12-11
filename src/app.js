@@ -199,6 +199,19 @@ setupExpress() {
   
   console.log(`🚂 Running on Railway: ${isRailway ? 'Yes' : 'No'}`);
   
+  // ========== FIX 1: CRITICAL - ADD RAILWAY HEALTH CHECK ENDPOINT ==========
+  // Railway expects this at the root level (/health) not at /api/health
+  this.expressApp.get('/health', (req, res) => {
+    // Simple, fast response for Railway's health check
+    res.json({
+      status: 'healthy',
+      service: 'botomics-platform',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'production'
+    });
+  });
+  
   // Middleware
   this.expressApp.use(cors({
     origin: '*',
@@ -215,7 +228,7 @@ setupExpress() {
     next();
   });
   
-  // Health check endpoint (for Railway)
+  // Health check endpoint (for your API)
   this.expressApp.get('/api/health', (req, res) => {
     res.json({
       status: 'healthy',
@@ -361,6 +374,17 @@ this.expressApp.use((req, res, next) => {
     res.sendFile(path.join(walletPath, 'index.html'));
   });
   
+  // ========== FIX 2: ADD ROOT TEST ENDPOINT ==========
+  this.expressApp.get('/test', (req, res) => {
+    res.json({
+      message: 'Botomics Platform Test',
+      timestamp: new Date().toISOString(),
+      publicUrl: PUBLIC_URL,
+      walletUrl: `${PUBLIC_URL}/wallet`,
+      availableEndpoints: ['GET /', 'GET /health', 'GET /api/health', 'GET /wallet', 'GET /api/public-url']
+    });
+  });
+  
   // Root route
   this.expressApp.get('/', (req, res) => {
     // If accessed via ngrok or Railway, redirect to wallet
@@ -390,9 +414,11 @@ this.expressApp.use((req, res, next) => {
         <div class="info-box">
           <h3>Quick Links</h3>
           <a href="/wallet" class="link-btn">💰 Open Wallet</a>
-          <a href="/api/health" class="link-btn">📊 Health Check</a>
+          <a href="/health" class="link-btn">📊 Railway Health</a>
+          <a href="/api/health" class="link-btn">📊 API Health Check</a>
           <a href="/api/public-url" class="link-btn">🌐 URL Info</a>
           <a href="${PUBLIC_URL}/wallet" class="link-btn">🔗 Public Wallet</a>
+          <a href="/test" class="link-btn">🧪 Test Endpoint</a>
         </div>
         
         <div class="info-box">
@@ -412,7 +438,7 @@ this.expressApp.use((req, res, next) => {
     `);
   });
   
-  // 404 handler
+  // ========== FIX 3: UPDATE 404 HANDLER ==========
   this.expressApp.use((req, res) => {
     res.status(404).json({
       error: 'Not Found',
@@ -420,9 +446,11 @@ this.expressApp.use((req, res, next) => {
       timestamp: new Date().toISOString(),
       availableRoutes: [
         'GET /',
+        'GET /health',
         'GET /wallet',
         'GET /api/health',
-        'GET /api/public-url'
+        'GET /api/public-url',
+        'GET /test'
       ]
     });
   });
@@ -670,8 +698,8 @@ this.bot.command('railway_url', async (ctx) => {
       `*API Base:* ${PUBLIC_URL}/api\n\n` +
       `*Save these URLs:*\n` +
       `• Wallet bookmark: ${PUBLIC_URL}/wallet\n` +
-      `• Health check: ${PUBLIC_URL}/api/health\n` +
-      `• Railway test: ${PUBLIC_URL}/api/test-railway\n\n` +
+      `• Health check: ${PUBLIC_URL}/health\n` +
+      `• Railway test: ${PUBLIC_URL}/api/health\n\n` +
       `*Note:* URLs auto-update on Railway redeployments.`
     );
   } catch (error) {
@@ -1097,8 +1125,8 @@ async openWalletMiniApp(ctx, section = 'main') {
         `*API Base:* ${PUBLIC_URL}/api\n\n` +
         `*Save these URLs:*\n` +
         `• Wallet bookmark: ${walletUrl}\n` +
-        `• Health check: ${PUBLIC_URL}/api/health\n` +
-        `• Railway test: ${PUBLIC_URL}/api/test-railway\n\n` +
+        `• Health check: ${PUBLIC_URL}/health\n` +
+        `• Railway test: ${PUBLIC_URL}/api/health\n\n` +
         `*Note:* URLs update automatically on Railway redeployments.`
       );
     });

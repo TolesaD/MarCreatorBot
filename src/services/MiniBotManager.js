@@ -579,6 +579,45 @@ class MiniBotManager {
         await ctx.reply('❌ Error debugging broadcast sessions.');
       }
     });
+
+    bot.command('debug_broadcast_flow', async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const { metaBotInfo } = ctx;
+    
+    let message = `🔍 *Broadcast Flow Debug*\n\n`;
+    message += `*User ID:* ${userId}\n`;
+    message += `*Bot ID:* ${metaBotInfo.mainBotId}\n`;
+    message += `*Bot Name:* ${metaBotInfo.botName}\n\n`;
+    
+    // Check user count
+    const userCount = await UserLog.count({ where: { bot_id: metaBotInfo.mainBotId } });
+    message += `*Total Users:* ${userCount}\n`;
+    
+    // Check if user is admin
+    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, userId);
+    message += `*Admin Access:* ${isAdmin ? '✅ Yes' : '❌ No'}\n\n`;
+    
+    // Check active bot instance
+    const botInstance = this.getBotInstanceByDbId(metaBotInfo.mainBotId);
+    message += `*Bot Instance Active:* ${botInstance ? '✅ Yes' : '❌ No'}\n`;
+    
+    // Check broadcast sessions
+    const broadcastSession = this.broadcastSessions.get(userId);
+    message += `*Broadcast Session:* ${broadcastSession ? '✅ Active' : '❌ None'}\n`;
+    if (broadcastSession) {
+      message += `  - Step: ${broadcastSession.step}\n`;
+      message += `  - Bot ID: ${broadcastSession.botId}\n`;
+      message += `  - Message Length: ${broadcastSession.message?.length || 0}\n`;
+    }
+    
+    await ctx.replyWithMarkdown(message);
+    
+  } catch (error) {
+    console.error('Debug broadcast flow error:', error);
+    await ctx.reply('❌ Error debugging broadcast flow.');
+  }
+});
     
     // ==================== ADDED MISSING COMMAND HANDLERS ====================
     
@@ -968,8 +1007,6 @@ class MiniBotManager {
         `*Tips:*\n` +
         `• Use {botName} as placeholder for bot name\n` +
         `• Markdown formatting is supported\n` +
-        `• Keep it welcoming and informative\n` +
-        `• Creator credit will be automatically added\n\n` +
         `*Cancel:* Type /cancel`,
         { parse_mode: 'Markdown' }
       );
@@ -1000,47 +1037,64 @@ class MiniBotManager {
 
   // ==================== FIXED: BROADCAST SESSION HANDLING ====================
 
-  sendBroadcastWithConfirmation = async (ctx, botId, message) => {
+ sendBroadcastWithConfirmation = async (ctx, botId, message) => {
   try {
     const userId = ctx.from.id;
     
-    // FIXED: Convert botId to string for consistent storage
-    const sessionBotId = String(botId);
+    console.log(`📢 Creating/updating broadcast session for user ${userId}, bot ${botId}`);
+    console.log(`📝 Message length: ${message.length} characters`);
     
-    console.log(`📢 Storing broadcast session for user ${userId}, bot ${sessionBotId}`);
+    // Get existing session or create new
+    let session = this.broadcastSessions.get(userId);
     
-    // Store broadcast data
-    this.broadcastSessions.set(userId, {
-      botId: sessionBotId,
-      message: message,
-      step: 'awaiting_confirmation',
-      createdAt: Date.now(),
-      confirmationMessageId: null // Will be set below
-    });
+    if (session) {
+      // Update existing session
+      console.log(`📝 Updating existing session with message`);
+      session.botId = String(botId);
+      session.message = message;  // CRITICAL: Store the message!
+      session.step = 'awaiting_confirmation';
+      session.chatId = ctx.chat.id;
+      session.createdAt = Date.now();
+    } else {
+      // Create new session
+      console.log(`📝 Creating new session with message`);
+      session = {
+        botId: String(botId),
+        message: message,  // CRITICAL: Store the message!
+        step: 'awaiting_confirmation',
+        createdAt: Date.now(),
+        chatId: ctx.chat.id
+      };
+    }
     
-    // Step 1: Show confirmation
+    // Save the session
+    this.broadcastSessions.set(userId, session);
+    
+    console.log(`✅ Session saved for user ${userId}`);
+    console.log(`📊 Session message length: ${session.message?.length || 0} characters`);
+    
+    // Show confirmation message
     const confirmationMessage = await ctx.reply(
+      `📢 *Broadcast Confirmation*\n\n` +
       `*Message Preview:*\n` +
-      `${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n\n` +
-      `*Are you sure you want to send this broadcast to all users?*\n\n` +
-      `This action cannot be undone.`,
+      `\`\`\`\n${message.substring(0, 300)}${message.length > 300 ? '...' : ''}\n\`\`\`\n\n` +
+      `*Are you sure you want to send this to all users?*\n` +
+      `✅ Yes - Send immediately\n` +
+      `❌ No - Cancel broadcast`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Yes, Send Broadcast', `confirm_broadcast_${sessionBotId}`)],
-          [Markup.button.callback('❌ Cancel', `cancel_broadcast_${sessionBotId}`)]
+          [Markup.button.callback('✅ Yes, Send Broadcast', `confirm_broadcast_${botId}`)],
+          [Markup.button.callback('❌ Cancel', `cancel_broadcast_${botId}`)]
         ])
       }
     );
     
     // Update session with confirmation message ID
-    const session = this.broadcastSessions.get(userId);
-    if (session) {
-      session.confirmationMessageId = confirmationMessage.message_id;
-      session.chatId = ctx.chat.id;
-      this.broadcastSessions.set(userId, session);
-      console.log(`✅ Broadcast session stored: user ${userId}, step ${session.step}`);
-    }
+    session.confirmationMessageId = confirmationMessage.message_id;
+    this.broadcastSessions.set(userId, session);
+    
+    console.log(`✅ Confirmation shown for user ${userId}, message ID: ${confirmationMessage.message_id}`);
     
   } catch (error) {
     console.error('Send broadcast confirmation error:', error);
@@ -1048,17 +1102,30 @@ class MiniBotManager {
   }
 };
 
-  handleBroadcastConfirmation = async (ctx, botId) => {
+ handleBroadcastConfirmation = async (ctx, botId) => {
   try {
     const userId = ctx.from.id;
-    console.log(`📢 Processing broadcast confirmation for user ${userId}, bot ${botId}`);
+    console.log(`\n📢 Processing broadcast confirmation for user ${userId}, bot ${botId}`);
     
-    // Get session
+    // Quick debug of all sessions
+    console.log(`📊 Total broadcast sessions: ${this.broadcastSessions.size}`);
+    for (const [uid, sess] of this.broadcastSessions.entries()) {
+      console.log(`  User ${uid}: bot=${sess.botId}, step=${sess.step}, messageLength=${sess.message?.length || 0}`);
+    }
+    
     const session = this.broadcastSessions.get(userId);
     
     if (!session) {
       console.log(`❌ No broadcast session found for user ${userId}`);
-      await ctx.answerCbQuery('❌ No broadcast session found. Please start a new broadcast.');
+      await ctx.answerCbQuery('❌ No active broadcast session found. Please start a new broadcast.');
+      return;
+    }
+    
+    // Validate session data
+    if (!session.message || typeof session.message !== 'string' || session.message.trim().length === 0) {
+      console.error(`❌ Invalid message in session:`, session.message);
+      await ctx.answerCbQuery('❌ Error: Broadcast message is empty. Please start over.');
+      this.broadcastSessions.delete(userId);
       return;
     }
     
@@ -1066,7 +1133,8 @@ class MiniBotManager {
     const sessionBotId = String(session.botId);
     const requestBotId = String(botId);
     
-    console.log(`🔍 Session check: botId ${sessionBotId} vs ${requestBotId}, step ${session.step}`);
+    console.log(`🔍 Session botId: "${sessionBotId}" (type: ${typeof session.botId})`);
+    console.log(`🔍 Request botId: "${requestBotId}" (type: ${typeof botId})`);
     
     if (session.step !== 'awaiting_confirmation' || sessionBotId !== requestBotId) {
       console.log(`❌ Invalid session state for user ${userId}`);
@@ -1088,6 +1156,7 @@ class MiniBotManager {
     
     // Store message before clearing session
     const broadcastMessage = session.message;
+    console.log(`📝 Broadcasting message: "${broadcastMessage.substring(0, 50)}..."`);
     
     // Clear session BEFORE processing to prevent re-entry
     this.broadcastSessions.delete(userId);
@@ -1107,12 +1176,11 @@ class MiniBotManager {
     const userId = ctx.from.id;
     console.log(`❌ Processing broadcast cancellation for user ${userId}, bot ${botId}`);
     
-    // Get session
     const session = this.broadcastSessions.get(userId);
     
     if (!session) {
       console.log(`❌ No broadcast session found for user ${userId}`);
-      await ctx.answerCbQuery('❌ No broadcast to cancel');
+      await ctx.answerCbQuery('❌ No active broadcast session.');
       return;
     }
     
@@ -1153,6 +1221,22 @@ class MiniBotManager {
     console.error('Broadcast cancellation error:', error);
     await ctx.answerCbQuery('❌ Error cancelling broadcast');
   }
+};
+debugBroadcastSessions = () => {
+  console.log('\n🔍 DEBUG: BROADCAST SESSIONS');
+  console.log('============================');
+  console.log(`Total sessions: ${this.broadcastSessions.size}`);
+  
+  for (const [userId, session] of this.broadcastSessions.entries()) {
+    const age = Date.now() - (session.createdAt || Date.now());
+    console.log(`User ${userId}:`);
+    console.log(`  - Bot ID: ${session.botId}`);
+    console.log(`  - Step: ${session.step}`);
+    console.log(`  - Message length: ${session.message?.length || 0}`);
+    console.log(`  - Age: ${Math.floor(age/1000)} seconds`);
+    console.log(`  - Confirmation Message ID: ${session.confirmationMessageId || 'none'}`);
+  }
+  console.log('============================\n');
 };
 
   // ==================== BOTOMICS FEATURES IMPLEMENTATION ====================
@@ -1557,59 +1641,68 @@ class MiniBotManager {
 
   // 4. Enhanced Broadcast with Weekly Limits and Confirmation
   startBroadcast = async (ctx, botId) => {
-    try {
-      const userId = ctx.from.id;
-      
-      // CHECK BROADCAST LIMIT
-      const broadcastCheck = await SubscriptionService.canUserBroadcast(userId, botId);
-      
-      if (!broadcastCheck.canBroadcast) {
-        await ctx.reply(
-          `❌ *Weekly Broadcast Limit Reached*\n\n` +
-          `You have used ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit} broadcasts this week.\n\n` +
-          `*Freemium:* 3 broadcasts per week\n` +
-          `*Premium:* Unlimited broadcasts\n\n` +
-          `💎 Upgrade to Premium for unlimited broadcasts!\n\n` +
-          `*Reset:* ${this.getNextResetDate()}`,
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
-              [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
-            ])
-          }
-        );
-        return;
-      }
-
-      const userCount = await UserLog.count({ where: { bot_id: botId } });
-      
-      if (userCount === 0) {
-        await ctx.reply('❌ No users found for broadcasting.');
-        return;
-      }
-      
-      this.broadcastSessions.set(userId, {
-        botId: botId,
-        step: 'awaiting_message',
-        broadcastCheck: broadcastCheck // Store for reference
-      });
-      
-      await ctx.reply(
-        `📢 *Send Broadcast*\n\n` +
-        `*Recipients:* ${userCount} users\n` +
-        `*Weekly Usage:* ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit}\n` +
-        `*Remaining:* ${broadcastCheck.remaining} broadcasts this week\n\n` +
-        `Please type your broadcast message:\n\n` +
-        `*Cancel:* Type /cancel`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start broadcast error:', error);
-      await ctx.reply('❌ Error starting broadcast.');
+  try {
+    const userId = ctx.from.id;
+    console.log(`📢 Starting broadcast process for user ${userId}, bot ${botId}`);
+    
+    // Check admin access
+    const isAdmin = await this.checkAdminAccess(botId, userId);
+    if (!isAdmin) {
+      await ctx.reply('❌ Admin access required.');
+      return;
     }
-  };
+    
+    // CHECK BROADCAST LIMIT
+    const broadcastCheck = await SubscriptionService.canUserBroadcast(userId, botId);
+    
+    if (!broadcastCheck.canBroadcast) {
+      await ctx.reply(
+        `❌ *Weekly Broadcast Limit Reached*\n\n` +
+        `You have used ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit} broadcasts this week.\n\n` +
+        `*Freemium:* 3 broadcasts per week\n` +
+        `*Premium:* Unlimited broadcasts\n\n` +
+        `💎 Upgrade to Premium for unlimited broadcasts!\n\n` +
+        `*Reset:* ${this.getNextResetDate()}`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+            [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
+          ])
+        }
+      );
+      return;
+    }
+
+    const userCount = await UserLog.count({ where: { bot_id: botId } });
+    
+    if (userCount === 0) {
+      await ctx.reply('❌ No users found for broadcasting.');
+      return;
+    }
+    
+    console.log(`✅ Setting broadcast session for user ${userId}`);
+    this.broadcastSessions.set(userId, {
+      botId: botId,
+      step: 'awaiting_message',
+      broadcastCheck: broadcastCheck,
+      createdAt: Date.now()
+    });
+    
+    await ctx.reply(
+      `📢 *Send Broadcast*\n\n` +
+      `*Recipients:* ${userCount} users\n` +
+      `Please type your broadcast message:\n\n` +
+      `*Note:* You can use Markdown formatting\n` +
+      `*Cancel:* Type /cancel`,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (error) {
+    console.error('Start broadcast error:', error);
+    await ctx.reply('❌ Error starting broadcast.');
+  }
+};
 
   // 5. Enhanced Ad Display with Premium Check
   displayAdToUser = async (ctx, botId) => {
@@ -1722,7 +1815,7 @@ class MiniBotManager {
       const stats = await this.getQuickStats(metaBotInfo.mainBotId);
       const botRef = this.getBotReference(metaBotInfo.botName);
       
-      const dashboardMessage = `🤖 *Admin Dashboard - ${metaBotInfo.botName}*\n\n` +
+      const dashboardMessage = `*Admin Dashboard - ${metaBotInfo.botName}*\n\n` +
         `*Quick Stats:*\n` +
         `📨 ${stats.pendingMessages} pending messages\n` +
         `👥 ${stats.totalUsers} total users\n` +
@@ -2304,39 +2397,227 @@ class MiniBotManager {
       }
     };
     
-    showStats = async (ctx, botId) => {
-      try {
-        const userCount = await UserLog.count({ where: { bot_id: botId } });
-        const messageCount = await Feedback.count({ where: { bot_id: botId } });
-        const pendingCount = await Feedback.count({ 
-          where: { bot_id: botId, is_replied: false } 
-        });
-        
-        const messageTypes = await Feedback.findAll({
-          where: { bot_id: botId },
-          attributes: ['message_type', [Feedback.sequelize.fn('COUNT', Feedback.sequelize.col('id')), 'count']],
-          group: ['message_type']
-        });
-        
-        let typeBreakdown = '';
-        messageTypes.forEach(type => {
-          typeBreakdown += `• ${this.getMediaTypeEmoji(type.message_type)} ${type.message_type}: ${type.dataValues.count}\n`;
-        });
-        
-        const statsMessage = `📊 *Bot Statistics*\n\n` +
-          `👥 Total Users: ${userCount}\n` +
-          `💬 Total Messages: ${messageCount}\n` +
-          `📨 Pending Replies: ${pendingCount}\n` +
-          `🔄 Status: ✅ Active\n\n` +
-          `*Message Types:*\n${typeBreakdown}`;
-        
-        await ctx.replyWithMarkdown(statsMessage);
-        
-      } catch (error) {
-        console.error('Show stats error:', error);
-        await ctx.reply('❌ Error loading statistics.');
+    // Add this method for showing stats
+showStats = async (ctx, botId) => {
+  try {
+    const userCount = await UserLog.count({ where: { bot_id: botId } });
+    const messageCount = await Feedback.count({ where: { bot_id: botId } });
+    const pendingCount = await Feedback.count({ 
+      where: { bot_id: botId, is_replied: false } 
+    });
+    
+    const messageTypes = await Feedback.findAll({
+      where: { bot_id: botId },
+      attributes: ['message_type', [Feedback.sequelize.fn('COUNT', Feedback.sequelize.col('id')), 'count']],
+      group: ['message_type']
+    });
+    
+    let typeBreakdown = '';
+    messageTypes.forEach(type => {
+      typeBreakdown += `• ${this.getMediaTypeEmoji(type.message_type)} ${type.message_type}: ${type.dataValues.count}\n`;
+    });
+    
+    const statsMessage = `📊 *Bot Statistics*\n\n` +
+      `👥 Total Users: ${userCount}\n` +
+      `💬 Total Messages: ${messageCount}\n` +
+      `📨 Pending Replies: ${pendingCount}\n` +
+      `🔄 Status: ✅ Active\n\n` +
+      `*Message Types:*\n${typeBreakdown}`;
+    
+    await ctx.replyWithMarkdown(statsMessage);
+    
+  } catch (error) {
+    console.error('Show stats error:', error);
+    await ctx.reply('❌ Error loading statistics.');
+  }
+};
+
+// Add this method for ongoing broadcast cancellation
+handleOngoingBroadcastCancellation = async (ctx, botId) => {
+  try {
+    const userId = ctx.from.id;
+    
+    // Find the ongoing broadcast for this user
+    let broadcastId = null;
+    for (const [id, broadcast] of this.ongoingBroadcasts.entries()) {
+      if (broadcast.userId === userId && parseInt(broadcast.botId) === parseInt(botId)) {
+        broadcastId = id;
+        break;
       }
+    }
+    
+    if (!broadcastId) {
+      await ctx.answerCbQuery('❌ No ongoing broadcast found');
+      return;
+    }
+    
+    // Mark broadcast as cancelled
+    const broadcast = this.ongoingBroadcasts.get(broadcastId);
+    broadcast.cancelled = true;
+    this.ongoingBroadcasts.set(broadcastId, broadcast);
+    
+    await ctx.answerCbQuery('⏹️ Broadcast cancellation requested...');
+    
+  } catch (error) {
+    console.error('Ongoing broadcast cancellation error:', error);
+    await ctx.answerCbQuery('❌ Error cancelling broadcast');
+  }
+};
+
+// Add this critical method for sending broadcasts
+processBroadcastSend = async (ctx, botId, message) => {
+  try {
+    console.log(`📢 Starting broadcast for bot ID: ${botId}`);
+    
+    const users = await UserLog.findAll({ 
+      where: { bot_id: botId },
+      attributes: ['user_id']
+    });
+    
+    if (users.length === 0) {
+      await ctx.reply('❌ No users found for broadcasting.');
+      return;
+    }
+    
+    console.log(`📊 Broadcasting to ${users.length} users`);
+    
+    let successCount = 0;
+    let failCount = 0;
+    let cancelled = false;
+    const broadcastId = Date.now();
+    
+    // Create progress message with cancellation button
+    const progressMsg = await ctx.reply(
+      `🔄 Sending broadcast to ${users.length} users...\n\n` +
+      `✅ Sent: 0\n` +
+      `❌ Failed: 0\n` +
+      `📊 Progress: 0%`,
+      {
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
+        ])
+      }
+    );
+    
+    // Store ongoing broadcast session for cancellation
+    this.ongoingBroadcasts.set(broadcastId, {
+      userId: ctx.from.id,
+      botId: botId,
+      progressMessageId: progressMsg.message_id,
+      cancelled: false
+    });
+    
+    const botInstance = this.getBotInstanceByDbId(botId);
+    
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for broadcast');
+      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+      return;
+    }
+    
+    console.log(`✅ Bot instance found, starting broadcast...`);
+    
+    const escapeMarkdown = (text) => {
+      return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
     };
+    
+    const safeMessage = escapeMarkdown(message);
+    
+    // Send to users with progress updates
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      
+      // Check if broadcast was cancelled
+      const broadcast = this.ongoingBroadcasts.get(broadcastId);
+      if (broadcast && broadcast.cancelled) {
+        cancelled = true;
+        break;
+      }
+      
+      try {
+        await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
+          parse_mode: 'MarkdownV2'
+        });
+        successCount++;
+        
+        // Update progress every 10 messages or 10% progress
+        if (i % 10 === 0 || i === users.length - 1) {
+          const progressPercent = Math.floor(((i + 1) / users.length) * 100);
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            progressMsg.message_id,
+            null,
+            `🔄 Sending broadcast to ${users.length} users...\n\n` +
+            `✅ Sent: ${successCount}\n` +
+            `❌ Failed: ${failCount}\n` +
+            `📊 Progress: ${progressPercent}%`,
+            {
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
+              ])
+            }
+          );
+        }
+        
+        // Rate limiting
+        if (i % 30 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        failCount++;
+        console.error(`Failed to send to user ${user.user_id}:`, error.message);
+      }
+    }
+    
+    // Clear ongoing broadcast
+    this.ongoingBroadcasts.delete(broadcastId);
+    
+    // Create broadcast history record
+    await BroadcastHistory.create({
+      bot_id: botId,
+      sent_by: ctx.from.id,
+      message: message,
+      total_users: users.length,
+      successful_sends: successCount,
+      failed_sends: failCount,
+      created_at: new Date()
+    });
+    
+    // Show final results
+    if (cancelled) {
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        progressMsg.message_id,
+        null,
+        `⏹️ *Broadcast Cancelled*\n\n` +
+        `*Partial Results:*\n` +
+        `✅ Sent: ${successCount}\n` +
+        `❌ Failed: ${failCount}\n` +
+        `📊 Progress: ${Math.floor((successCount / users.length) * 100)}%\n\n` +
+        `The broadcast was cancelled before completion.`,
+        { parse_mode: 'Markdown' }
+      );
+    } else {
+      const successRate = users.length > 0 ? ((successCount / users.length) * 100).toFixed(1) : 0;
+      
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        progressMsg.message_id,
+        null,
+        `✅ *Broadcast Completed!*\n\n` +
+        `*Recipients:* ${users.length}\n` +
+        `*✅ Successful:* ${successCount}\n` +
+        `*❌ Failed:* ${failCount}\n` +
+        `*📊 Success Rate:* ${successRate}%`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    
+  } catch (error) {
+    console.error('Process broadcast send error:', error);
+    await ctx.reply('❌ Error sending broadcast: ' + error.message);
+  }
+};
     
     showAdmins = async (ctx, botId) => {
     try {
@@ -2446,65 +2727,93 @@ class MiniBotManager {
     };
     
     processAddAdmin = async (ctx, botId, input) => {
-      try {
-        let targetUserId;
-        
-        if (/^\d+$/.test(input)) {
-          targetUserId = parseInt(input);
-        } else {
-          const username = input.replace('@', '');
-          const user = await User.findOne({ where: { username: username } });
-          if (!user) {
-            await ctx.reply(`❌ User @${username} not found. Ask them to start @${this.mainBotUsername} first.`);
-            return;
-          }
-          targetUserId = user.telegram_id;
-        }
-        
-        const existingAdmin = await Admin.findOne({
-          where: { bot_id: botId, admin_user_id: targetUserId }
-        });
-        
-        if (existingAdmin) {
-          await ctx.reply('❌ This user is already an admin.');
-          return;
-        }
-        
-        const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
-        if (!targetUser) {
-          await ctx.reply(`❌ User not found. Ask them to start @${this.mainBotUsername} first.`);
-          return;
-        }
-        
-        await Admin.create({
-          bot_id: botId,
-          admin_user_id: targetUserId,
-          admin_username: targetUser.username,
-          added_by: ctx.from.id,
-          permissions: {
-            can_reply: true,
-            can_broadcast: true,
-            can_manage_admins: false,
-            can_view_stats: true,
-            can_deactivate: false
-          }
-        });
-        
-        const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
-        
-        const successMsg = await ctx.reply(
-          `✅ *${userDisplay} added as admin!*\n\n` +
-          `They can now reply to messages and send broadcasts.`,
-          { parse_mode: 'Markdown' }
-        );
-        
-        await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-        
-      } catch (error) {
-        console.error('Process add admin error:', error);
-        await ctx.reply('❌ Error adding admin.');
+  try {
+    let targetUserId;
+    
+    if (/^\d+$/.test(input)) {
+      targetUserId = parseInt(input);
+    } else {
+      const username = input.replace('@', '');
+      const user = await User.findOne({ where: { username: username } });
+      if (!user) {
+        await ctx.reply(`❌ User @${username} not found. Ask them to start @${this.mainBotUsername} first.`);
+        return;
       }
-    };
+      targetUserId = user.telegram_id;
+    }
+    
+    // === ADDED: Check co-admin limit before adding ===
+    const ownerId = ctx.from.id;
+    const limitCheck = await SubscriptionService.canUserAddCoAdmin(ownerId, botId);
+    
+    if (!limitCheck.canAdd) {
+      let message = `❌ *Cannot Add Co-Admin*\n\n`;
+      
+      if (limitCheck.tier === 'freemium') {
+        message += `*Freemium users can only have ${limitCheck.limit} co-admin(s).*\n\n` +
+                   `💎 *Upgrade to Premium for unlimited co-admins!*\n` +
+                   `• All premium features`;
+        
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url(`💎 Upgrade @${this.mainBotUsername}`, `https://t.me/${this.mainBotUsername}`)],
+            [Markup.button.callback('🔙 Back to Admins', `mini_admins`)]
+          ])
+        });
+      } else {
+        message += limitCheck.reason || 'Cannot add co-admin.';
+        await ctx.reply(message);
+      }
+      return;
+    }
+    // === END OF ADDED CHECK ===
+    
+    const existingAdmin = await Admin.findOne({
+      where: { bot_id: botId, admin_user_id: targetUserId }
+    });
+    
+    if (existingAdmin) {
+      await ctx.reply('❌ This user is already an admin.');
+      return;
+    }
+    
+    const targetUser = await User.findOne({ where: { telegram_id: targetUserId } });
+    if (!targetUser) {
+      await ctx.reply(`❌ User not found. Ask them to start @${this.mainBotUsername} first.`);
+      return;
+    }
+    
+    await Admin.create({
+  bot_id: botId,
+  admin_user_id: targetUserId,
+  admin_username: targetUser.username,
+  added_by: ctx.from.id,
+  permissions: {
+    can_reply: true,
+    can_broadcast: true,
+    can_manage_admins: false,
+    can_view_stats: true,
+    can_deactivate: false
+  }
+});
+
+const userDisplay = targetUser.username ? `@${targetUser.username}` : `User#${targetUserId}`;
+
+const successMsg = await ctx.reply(
+  `✅ *${userDisplay} added as admin!*\n\n` +
+  `They can now reply to messages and send broadcasts.`,
+  { parse_mode: 'Markdown' }
+);
+
+await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+
+    
+  } catch (error) {
+    console.error('Process add admin error:', error);
+    await ctx.reply('❌ Error adding admin.');
+  }
+};
     
     showAbout = async (ctx, metaBotInfo) => {
       try {
@@ -3360,21 +3669,34 @@ handleTextMessage = async (ctx) => {
     const message = ctx.message.text;
     const { metaBotInfo } = ctx;
     
-    // === BROADCAST SESSION CHECK (MUST BE FIRST) ===
-    const broadcastSession = this.broadcastSessions.get(user.id);
-    if (broadcastSession && broadcastSession.step === 'awaiting_message') {
-      console.log(`📢 Processing broadcast message from user ${user.id}`);
-      if (message === '/cancel') {
-        this.broadcastSessions.delete(user.id);
-        await ctx.reply('❌ Broadcast cancelled.');
-        return;
-      }
-      // Use new broadcast with confirmation
-      await this.sendBroadcastWithConfirmation(ctx, broadcastSession.botId, message);
-      this.broadcastSessions.delete(user.id);
-      return;
-    }
+    // Debug: Log session count
+    console.log(`📊 Current broadcast sessions: ${this.broadcastSessions.size}`);
     
+// === BROADCAST SESSION CHECK ===
+const broadcastSession = this.broadcastSessions.get(user.id);
+if (broadcastSession && broadcastSession.step === 'awaiting_message') {
+  console.log(`📢 Processing broadcast message from user ${user.id}`);
+  console.log(`📊 Current session state: step=${broadcastSession.step}, botId=${broadcastSession.botId}`);
+  console.log(`📝 Message received: "${message}" (length: ${message.length})`);
+  
+  if (message === '/cancel') {
+    this.broadcastSessions.delete(user.id);
+    await ctx.reply('❌ Broadcast cancelled.');
+    return;
+  }
+  
+  // Use new broadcast with confirmation - PASS THE MESSAGE!
+  await this.sendBroadcastWithConfirmation(ctx, broadcastSession.botId, message);
+  
+  // Update session step
+  broadcastSession.step = 'awaiting_confirmation';
+  broadcastSession.message = message; // Store message in session
+  this.broadcastSessions.set(user.id, broadcastSession);
+  
+  console.log(`✅ Session updated to awaiting_confirmation for user ${user.id}`);
+  console.log(`📝 Session message stored: "${broadcastSession.message}"`);
+  return;
+}
     // === WITHDRAWAL SESSION CHECK ===
     const ReferralHandler = require('../handlers/referralHandler');
     
@@ -3521,159 +3843,174 @@ handleTextMessage = async (ctx) => {
 };
 
   // Enhanced broadcast processing with cancellation support
-  processBroadcastSend = async (ctx, botId, message) => {
-    try {
-      console.log(`📢 Starting broadcast for bot ID: ${botId}`);
-      
-      const users = await UserLog.findAll({ 
-        where: { bot_id: botId },
-        attributes: ['user_id']
-      });
-      
-      if (users.length === 0) {
-        await ctx.reply('❌ No users found for broadcasting.');
-        return;
-      }
-      
-      console.log(`📊 Broadcasting to ${users.length} users`);
-      
-      let successCount = 0;
-      let failCount = 0;
-      let cancelled = false;
-      const broadcastId = Date.now();
-      
-      // Create progress message with cancellation button
-      const progressMsg = await ctx.reply(
-        `🔄 Sending broadcast to ${users.length} users...\n\n` +
-        `✅ Sent: 0\n` +
-        `❌ Failed: 0\n` +
-        `📊 Progress: 0%`,
-        {
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
-          ])
-        }
-      );
-      
-      // Store ongoing broadcast session for cancellation
-      this.ongoingBroadcasts.set(broadcastId, {
-        userId: ctx.from.id,
-        botId: botId,
-        progressMessageId: progressMsg.message_id,
-        cancelled: false
-      });
-      
-      const botInstance = this.getBotInstanceByDbId(botId);
-      
-      if (!botInstance) {
-        console.error('❌ Bot instance not found for broadcast');
-        await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
-        return;
-      }
-      
-      console.log(`✅ Bot instance found, starting broadcast...`);
-      
-      const escapeMarkdown = (text) => {
-        return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
-      };
-      
-      const safeMessage = escapeMarkdown(message);
-      
-      // Send to users with progress updates
-      for (let i = 0; i < users.length; i++) {
-        const user = users[i];
-        
-        // Check if broadcast was cancelled
-        const broadcast = this.ongoingBroadcasts.get(broadcastId);
-        if (broadcast && broadcast.cancelled) {
-          cancelled = true;
-          break;
-        }
-        
-        try {
-          await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
-            parse_mode: 'MarkdownV2'
-          });
-          successCount++;
-          
-          // Update progress every 10 messages or 10% progress
-          if (i % 10 === 0 || i === users.length - 1) {
-            const progressPercent = Math.floor(((i + 1) / users.length) * 100);
-            await ctx.telegram.editMessageText(
-              ctx.chat.id,
-              progressMsg.message_id,
-              null,
-              `🔄 Sending broadcast to ${users.length} users...\n\n` +
-              `✅ Sent: ${successCount}\n` +
-              `❌ Failed: ${failCount}\n` +
-              `📊 Progress: ${progressPercent}%`,
-              {
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
-                ])
-              }
-            );
-          }
-          
-          // Rate limiting
-          if (i % 30 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (error) {
-          failCount++;
-          console.error(`Failed to send to user ${user.user_id}:`, error.message);
-        }
-      }
-      
-      // Clear ongoing broadcast
-      this.ongoingBroadcasts.delete(broadcastId);
-      
-      // Create broadcast history record
-      await BroadcastHistory.create({
-        bot_id: botId,
-        sent_by: ctx.from.id,
-        message: message,
-        total_users: users.length,
-        successful_sends: successCount,
-        failed_sends: failCount,
-        created_at: new Date()
-      });
-      
-      // Show final results
-      if (cancelled) {
-        await ctx.telegram.editMessageText(
-          ctx.chat.id,
-          progressMsg.message_id,
-          null,
-          `⏹️ *Broadcast Cancelled*\n\n` +
-          `*Partial Results:*\n` +
-          `✅ Sent: ${successCount}\n` +
-          `❌ Failed: ${failCount}\n` +
-          `📊 Progress: ${Math.floor((successCount / users.length) * 100)}%\n\n` +
-          `The broadcast was cancelled before completion.`,
-          { parse_mode: 'Markdown' }
-        );
-      } else {
-        const successRate = users.length > 0 ? ((successCount / users.length) * 100).toFixed(1) : 0;
-        
-        await ctx.telegram.editMessageText(
-          ctx.chat.id,
-          progressMsg.message_id,
-          null,
-          `✅ *Broadcast Completed!*\n\n` +
-          `*Recipients:* ${users.length}\n` +
-          `*✅ Successful:* ${successCount}\n` +
-          `*❌ Failed:* ${failCount}\n` +
-          `*📊 Success Rate:* ${successRate}%`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-      
-    } catch (error) {
-      console.error('Process broadcast send error:', error);
-      await ctx.reply('❌ Error sending broadcast: ' + error.message);
+ processBroadcastSend = async (ctx, botId, message) => {
+  try {
+    console.log(`📢 Starting broadcast for bot ID: ${botId}`);
+    console.log(`📝 Message to send: "${message}"`);
+    console.log(`📝 Message type: ${typeof message}, length: ${message?.length || 0}`);
+    
+    // Validate message
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      console.error('❌ Invalid message for broadcast:', message);
+      await ctx.reply('❌ Error: Broadcast message is empty or invalid.');
+      return;
     }
-  };
+    
+    const users = await UserLog.findAll({ 
+      where: { bot_id: botId },
+      attributes: ['user_id']
+    });
+    
+    if (users.length === 0) {
+      await ctx.reply('❌ No users found for broadcasting.');
+      return;
+    }
+    
+    console.log(`📊 Broadcasting to ${users.length} users`);
+    
+    let successCount = 0;
+    let failCount = 0;
+    let cancelled = false;
+    const broadcastId = Date.now();
+    
+    // Create progress message with cancellation button
+    const progressMsg = await ctx.reply(
+      `🔄 Sending broadcast to ${users.length} users...\n\n` +
+      `✅ Sent: 0\n` +
+      `❌ Failed: 0\n` +
+      `📊 Progress: 0%`,
+      {
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
+        ])
+      }
+    );
+    
+    // Store ongoing broadcast session for cancellation
+    this.ongoingBroadcasts.set(broadcastId, {
+      userId: ctx.from.id,
+      botId: botId,
+      progressMessageId: progressMsg.message_id,
+      cancelled: false
+    });
+    
+    const botInstance = this.getBotInstanceByDbId(botId);
+    
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for broadcast');
+      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+      return;
+    }
+    
+    console.log(`✅ Bot instance found, starting broadcast...`);
+    
+    // Safe markdown escaping function
+    const escapeMarkdown = (text) => {
+      if (!text || typeof text !== 'string') {
+        console.error('❌ Invalid text for markdown escaping:', text);
+        return 'Broadcast message';
+      }
+      return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+    };
+    
+    const safeMessage = escapeMarkdown(message);
+    console.log(`✅ Message escaped for markdown, length: ${safeMessage.length}`);
+    
+    // Send to users with progress updates
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      
+      // Check if broadcast was cancelled
+      const broadcast = this.ongoingBroadcasts.get(broadcastId);
+      if (broadcast && broadcast.cancelled) {
+        cancelled = true;
+        break;
+      }
+      
+      try {
+        await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
+          parse_mode: 'MarkdownV2'
+        });
+        successCount++;
+        
+        // Update progress every 10 messages or 10% progress
+        if (i % 10 === 0 || i === users.length - 1) {
+          const progressPercent = Math.floor(((i + 1) / users.length) * 100);
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            progressMsg.message_id,
+            null,
+            `🔄 Sending broadcast to ${users.length} users...\n\n` +
+            `✅ Sent: ${successCount}\n` +
+            `❌ Failed: ${failCount}\n` +
+            `📊 Progress: ${progressPercent}%`,
+            {
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('⏹️ Cancel Broadcast', `cancel_ongoing_broadcast_${botId}`)]
+              ])
+            }
+          );
+        }
+        
+        // Rate limiting
+        if (i % 30 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        failCount++;
+        console.error(`Failed to send to user ${user.user_id}:`, error.message);
+      }
+    }
+    
+    // Clear ongoing broadcast
+    this.ongoingBroadcasts.delete(broadcastId);
+    
+    // Create broadcast history record
+    await BroadcastHistory.create({
+      bot_id: botId,
+      sent_by: ctx.from.id,
+      message: message,
+      total_users: users.length,
+      successful_sends: successCount,
+      failed_sends: failCount,
+      created_at: new Date()
+    });
+    
+    // Show final results
+    if (cancelled) {
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        progressMsg.message_id,
+        null,
+        `⏹️ *Broadcast Cancelled*\n\n` +
+        `*Partial Results:*\n` +
+        `✅ Sent: ${successCount}\n` +
+        `❌ Failed: ${failCount}\n` +
+        `📊 Progress: ${Math.floor((successCount / users.length) * 100)}%\n\n` +
+        `The broadcast was cancelled before completion.`,
+        { parse_mode: 'Markdown' }
+      );
+    } else {
+      const successRate = users.length > 0 ? ((successCount / users.length) * 100).toFixed(1) : 0;
+      
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        progressMsg.message_id,
+        null,
+        `✅ *Broadcast Completed!*\n\n` +
+        `*Recipients:* ${users.length}\n` +
+        `*✅ Successful:* ${successCount}\n` +
+        `*❌ Failed:* ${failCount}\n` +
+        `*📊 Success Rate:* ${successRate}%`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    
+  } catch (error) {
+    console.error('Process broadcast send error:', error);
+    await ctx.reply('❌ Error sending broadcast: ' + error.message);
+  }
+};
 
   // Handle ongoing broadcast cancellation
   handleOngoingBroadcastCancellation = async (ctx, botId) => {

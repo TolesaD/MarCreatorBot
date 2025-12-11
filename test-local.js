@@ -5,7 +5,6 @@ console.log('🚀 Starting Local Testing Mode');
 console.log('==============================');
 console.log(`Environment: ${config.NODE_ENV}`);
 console.log(`Base URL: ${config.BASE_URL}`);
-console.log(`Wallet URL: ${config.WALLET_BASE_URL || 'https://testweb.maroset.com/wallet'}`);
 
 // Check if we're in local testing mode
 if (process.env.LOCAL_TESTING !== 'true') {
@@ -139,9 +138,6 @@ async function startLocalTesting() {
   // Start services
   console.log('\n✅ Local Test Environment Ready!');
   console.log('\n🌐 Available URLs:');
-  console.log('   Main Bot: https://testweb.maroset.com');
-  console.log('   Wallet: https://testweb.maroset.com/wallet');
-  console.log('   Health Check: https://testweb.maroset.com/health');
   
   console.log('\n⚡ Features enabled:');
   console.log('   • Instant Mini Bot initialization');
