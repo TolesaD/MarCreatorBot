@@ -45,7 +45,6 @@ const Bot = sequelize.define('Bot', {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
   },
-  // Add to Bot model after existing fields
   niche_id: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -74,9 +73,63 @@ const Bot = sequelize.define('Bot', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
+  // ==================== PINNED MESSAGE FIELDS ====================
+  pinned_message_id: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    comment: 'Telegram message ID of pinned message'
+  },
+  pinned_chat_id: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    comment: 'Telegram chat ID where message is pinned'
+  },
+  pinned_message_content: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Content/text of pinned message'
+  },
+  pinned_message_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: 'text',
+    comment: 'Type of pinned message: text, photo, video, document'
+  },
+  pinned_file_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Telegram file ID for media messages'
+  },
+  pinned_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When message was pinned'
+  },
+  pinned_by: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    comment: 'User ID who pinned the message'
+  },
+  // Keep old field for backward compatibility
   pinned_start_message: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  // ==================== TRANSFER OWNERSHIP FIELDS ====================
+  original_creator_id: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    comment: 'Original creator user ID (for security tracking)'
+  },
+  ownership_transferred: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Whether ownership has been transferred'
+  },
+  ownership_history: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'History of ownership transfers'
   }
 }, {
   tableName: 'bots',
@@ -226,6 +279,8 @@ function isValidTokenFormat(token) {
   
   return isValid;
 }
+
+// ==================== END PINNED MESSAGE METHODS ====================
 
 // CRITICAL: Add method to test token decryption without initializing bot
 Bot.prototype.testTokenDecryption = function() {
@@ -392,7 +447,10 @@ Bot.prototype.toSafeFormat = function() {
     welcome_message: this.welcome_message,
     is_active: this.is_active,
     created_at: this.created_at,
-    updated_at: this.updated_at
+    updated_at: this.updated_at,
+    user_count: this.user_count,
+    has_donation_enabled: this.has_donation_enabled,
+    has_pinned_message: !!this.pinned_message_content
   };
 };
 
@@ -431,6 +489,52 @@ Bot.diagnoseEncryption = async function() {
     encryption_system: encryptionWorking,
     bot_tests: results
   };
+};
+
+// Static method to migrate pinned messages from old format
+Bot.migratePinnedMessages = async function() {
+  try {
+    console.log('🔄 Migrating pinned messages from old format...');
+    
+    const botsWithOldPinned = await this.findAll({
+      where: {
+        pinned_start_message: {
+          [Op.ne]: null
+        },
+        pinned_message_content: null
+      }
+    });
+    
+    console.log(`📋 Found ${botsWithOldPinned.length} bots with old pinned messages`);
+    
+    let migratedCount = 0;
+    for (const bot of botsWithOldPinned) {
+      try {
+        await bot.update({
+          pinned_message_content: bot.pinned_start_message,
+          pinned_message_type: 'text',
+          pinned_at: bot.updated_at || new Date()
+        });
+        migratedCount++;
+        console.log(`✅ Migrated pinned message for bot: ${bot.bot_name}`);
+      } catch (error) {
+        console.error(`❌ Failed to migrate pinned message for bot ${bot.bot_name}:`, error);
+      }
+    }
+    
+    return {
+      success: true,
+      totalFound: botsWithOldPinned.length,
+      migrated: migratedCount,
+      message: `Migrated ${migratedCount}/${botsWithOldPinned.length} pinned messages`
+    };
+  } catch (error) {
+    console.error('Pinned message migration error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 };
 
 module.exports = Bot;

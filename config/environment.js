@@ -1,26 +1,112 @@
 ﻿// config/environment.js - RAILWAY DEPLOYMENT VERSION
 
+// config/environment.js - FIXED VERSION
+
+// Helper function to ensure HTTPS (except for localhost)
+const ensureHttps = (url) => {
+  if (!url) return url;
+  
+  // Remove any existing protocol
+  let cleanUrl = url.trim().replace(/\/$/, '');
+  
+  // Remove any existing http:// or https://
+  cleanUrl = cleanUrl.replace(/^https?:\/\//i, '');
+  
+  // Don't modify localhost URLs (development)
+  if (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1')) {
+    return `http://${cleanUrl}`;
+  }
+  
+  // Add https:// for all other URLs
+  return `https://${cleanUrl}`;
+};
+
 function createConfig() {
   const env = process.env.NODE_ENV || 'production';
   const isDevelopment = env === 'development';
   const isProduction = env === 'production';
-  const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_URL;
+  
+  // Better Railway detection
+  const isRailway = process.env.RAILWAY_ENVIRONMENT || 
+                   process.env.RAILWAY_STATIC_URL || 
+                   process.env.RAILWAY_SERVICE_NAME;
+  
   const isCpanel = false;
 
-  // Handle Railway's DATABASE_PUBLIC_URL
-  const databaseUrl = process.env.DATABASE_URL || process.env.DATABASE_URL;
+  // Handle database URL (fix duplicate check)
+  const databaseUrl = process.env.DATABASE_URL;
   
-  // Handle WALLET_URL and APP_URL for Railway
+  // Handle URLs correctly for both development and production
   let walletUrl = process.env.WALLET_URL;
   let appUrl = process.env.APP_URL;
+  let publicUrl = process.env.PUBLIC_URL;
   
-  if (isRailway && process.env.RAILWAY_STATIC_URL) {
-    if (!walletUrl) {
-      walletUrl = `${process.env.RAILWAY_STATIC_URL}/wallet`;
+  // Log URL sources for debugging
+  console.log('🔧 Config: Detecting URLs...');
+  console.log('   isRailway:', isRailway);
+  console.log('   RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL);
+  console.log('   PUBLIC_URL:', process.env.PUBLIC_URL);
+  console.log('   WALLET_URL:', process.env.WALLET_URL);
+  
+  if (isRailway) {
+    // Railway production - prioritize RAILWAY_STATIC_URL
+    if (process.env.RAILWAY_STATIC_URL) {
+      const baseUrl = ensureHttps(process.env.RAILWAY_STATIC_URL);
+      appUrl = baseUrl;
+      publicUrl = baseUrl;
+      
+      if (!walletUrl) {
+        walletUrl = `${baseUrl}/wallet`;
+      }
+      
+      console.log(`🚂 Railway: Using RAILWAY_STATIC_URL: ${baseUrl}`);
+    } 
+    // Fallback to RAILWAY_PUBLIC_URL
+    else if (process.env.RAILWAY_PUBLIC_URL) {
+      const baseUrl = ensureHttps(process.env.RAILWAY_PUBLIC_URL);
+      appUrl = baseUrl;
+      publicUrl = baseUrl;
+      
+      if (!walletUrl) {
+        walletUrl = `${baseUrl}/wallet`;
+      }
+      
+      console.log(`🚂 Railway: Using RAILWAY_PUBLIC_URL: ${baseUrl}`);
     }
-    if (!appUrl) {
-      appUrl = process.env.RAILWAY_STATIC_URL;
+  } else if (isDevelopment) {
+    // Local development - use PUBLIC_URL from .env
+    if (process.env.PUBLIC_URL) {
+      const baseUrl = process.env.PUBLIC_URL.trim().replace(/\/$/, '');
+      appUrl = baseUrl;
+      publicUrl = baseUrl;
+      
+      if (!walletUrl) {
+        walletUrl = `${baseUrl}/wallet`;
+      }
+      
+      console.log(`🔧 Development: Using PUBLIC_URL from .env: ${baseUrl}`);
+    } else {
+      // Default local development
+      appUrl = 'http://localhost:3000';
+      publicUrl = 'http://localhost:3000';
+      walletUrl = 'http://localhost:3000/wallet';
+      console.log('🔧 Development: Using default localhost:3000');
     }
+  }
+  
+  // Ensure HTTPS for all production URLs (even if manually set)
+  if (isProduction) {
+    appUrl = ensureHttps(appUrl);
+    publicUrl = ensureHttps(publicUrl);
+    walletUrl = ensureHttps(walletUrl);
+  }
+
+  // Fallback for any undefined URLs
+  if (!appUrl && isProduction) {
+    appUrl = 'https://botomics.up.railway.app';
+    publicUrl = appUrl;
+    walletUrl = `${appUrl}/wallet`;
+    console.log(`⚠️  No URL detected, using fallback: ${appUrl}`);
   }
 
   return {
@@ -37,7 +123,7 @@ function createConfig() {
     MAIN_BOT_NAME: 'BotomicsBot',
     
     // Railway provides the public URL
-    WEBHOOK_URL: process.env.RAILWAY_STATIC_URL || process.env.WEBHOOK_URL,
+    WEBHOOK_URL: ensureHttps(process.env.RAILWAY_STATIC_URL || process.env.WEBHOOK_URL),
     
     // ==================== DATABASE CONFIGURATION ====================
     DATABASE_URL: databaseUrl,
@@ -55,6 +141,11 @@ function createConfig() {
     PORT: process.env.PORT || 3000,
     HOST: process.env.HOST || '0.0.0.0',
     
+    // ==================== URL CONFIGURATION ====================
+    WALLET_URL: walletUrl,
+    APP_URL: appUrl,
+    PUBLIC_URL: publicUrl,
+    
     // ==================== SECURITY & LIMITS ====================
     MAX_BOTS_PER_USER: parseInt(process.env.MAX_BOTS_PER_USER) || 10,
     MAX_ADMINS_PER_BOT: parseInt(process.env.MAX_ADMINS_PER_BOT) || 10,
@@ -63,10 +154,6 @@ function createConfig() {
     // Rate limiting
     RATE_LIMIT_WINDOW: parseInt(process.env.RATE_LIMIT_WINDOW) || 900000,
     RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-    
-    // ==================== WALLET CONFIGURATION ====================
-    WALLET_URL: process.env.WALLET_URL,
-    PUBLIC_URL: process.env.PUBLIC_URL,
     
     // ==================== PLATFORM ADMIN ====================
     PLATFORM_CREATOR_ID: process.env.PLATFORM_CREATOR_ID || '1827785384',

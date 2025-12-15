@@ -64,117 +64,71 @@ class ChannelJoinHandler {
     }
   }
 
-  // Check channel limits based on subscription tier
-static async checkChannelLimit(ctx, botId) {
-  try {
-    const SubscriptionService = require('../services/subscriptionService');
-    
-    // USE SUBSCRIPTION SERVICE INSTEAD OF DIRECT QUERY
-    const channelLimit = await SubscriptionService.checkFeatureAccess(ctx.from.id, 'force_join_channels');
-    
-    // Count current active channels for this bot
-    const activeChannelsCount = await ChannelJoin.count({
-      where: { 
-        bot_id: botId, 
-        is_active: true 
-      }
-    });
-
-    // Apply subscription limits
-    if (activeChannelsCount >= channelLimit) {
-      return {
-        allowed: false,
-        reason: `❌ ${channelLimit === 1 ? 'Freemium Limit Reached!' : 'Channel Limit Reached!'}\n\n` +
-                `You have ${activeChannelsCount}/${channelLimit} active channels.\n\n` +
-                `*Freemium:* 1 channel max\n` +
-                `*Premium:* Unlimited channels\n\n` +
-                `💎 Upgrade to Premium for unlimited channels!`,
-        tier: channelLimit === 1 ? 'freemium' : 'premium',
-        currentCount: activeChannelsCount,
-        limit: channelLimit
-      };
-    }
-
-    return { 
-      allowed: true, 
-      tier: channelLimit === 1 ? 'freemium' : 'premium',
-      currentCount: activeChannelsCount,
-      limit: channelLimit
-    };
-    
-  } catch (error) {
-    console.error('Channel limit check error:', error);
-    // Default to freemium limits if there's an error
-    const activeChannelsCount = await ChannelJoin.count({
-      where: { 
-        bot_id: botId, 
-        is_active: true 
-      }
-    });
-    
-    if (activeChannelsCount >= 1) {
-      return {
-        allowed: false,
-        reason: `❌ Channel limit reached.\n\nPlease upgrade to Premium for unlimited channels.`,
-        tier: 'freemium'
-      };
-    }
-    
-    return { allowed: true, tier: 'freemium' };
-  }
-}
-
-// Update the startAddChannel method to show current usage:
-static async startAddChannel(ctx, botId) {
-  try {
-    await ctx.answerCbQuery();
-    
-    // Check channel limit before allowing addition
-    const limitCheck = await this.checkChannelLimit(ctx, botId);
-    if (!limitCheck.allowed) {
-      await ctx.reply(limitCheck.reason, { 
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
-          [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
-        ])
+  // Check channel limits based on subscription tier - UPDATED
+  static async checkChannelLimit(ctx, botId) {
+    try {
+      const SubscriptionService = require('../services/subscriptionService');
+      
+      // Get user's subscription tier
+      const tier = await SubscriptionService.getSubscriptionTier(ctx.from.id);
+      
+      // Count current active channels for this bot
+      const activeChannelsCount = await ChannelJoin.count({
+        where: { 
+          bot_id: botId, 
+          is_active: true 
+        }
       });
-      return;
-    }
-    
-    this.channelSessions = this.channelSessions || new Map();
-    this.channelSessions.set(ctx.from.id, {
-      botId: botId,
-      step: 'awaiting_channel_info'
-    });
 
-    await ctx.reply(
-      `➕ *Add Required Channel*\n\n` +
-      `Please send the channel information in this format:\n\n` +
-      `\`@channel_username Channel Title\`\n\n` +
-      `*Example:*\n` +
-      `\`@MyChannel My Awesome Channel\`\n\n` +
-      `*Important:*\n` +
-      `• Your bot must be admin in the channel\n` +
-      `• Use the channel username (with @)\n` +
-      `• Channel title can be any descriptive name\n\n` +
-      `*Your Plan:* ${limitCheck.tier === 'premium' ? '💎 Premium' : '🎫 Freemium'}\n` +
-      `*Current Usage:* ${limitCheck.currentCount}/${limitCheck.limit} channels\n` +
-      `*Channel Limit:* ${limitCheck.tier === 'premium' ? 'Unlimited' : '1 channel'}\n\n` +
-      `*Cancel:* Type /cancel`,
-      { 
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('🚫 Cancel', `channel_manage_${botId}`)]
-        ])
+      // Apply subscription limits - 1 for freemium, unlimited for premium
+      let limit;
+      let allowed;
+      
+      if (tier === 'premium') {
+        limit = Infinity; // Unlimited for premium
+        allowed = true;
+      } else {
+        limit = 1; // Only 1 for freemium
+        allowed = activeChannelsCount < limit;
       }
-    );
 
-  } catch (error) {
-    console.error('Start add channel error:', error);
-    await ctx.reply('❌ Error starting channel addition.');
+      return { 
+        allowed: allowed, 
+        tier: tier,
+        currentCount: activeChannelsCount,
+        limit: limit,
+        reason: !allowed ? `❌ *Freemium Limit Reached!*\n\nYou have reached the maximum of 1 channel for the force join feature.\n\n💎 *Upgrade to Premium* for unlimited channels!` : ''
+      };
+      
+    } catch (error) {
+      console.error('Channel limit check error:', error);
+      // Default to freemium limits if there's an error
+      const activeChannelsCount = await ChannelJoin.count({
+        where: { 
+          bot_id: botId, 
+          is_active: true 
+        }
+      });
+      
+      if (activeChannelsCount >= 1) {
+        return {
+          allowed: false,
+          tier: 'freemium',
+          currentCount: activeChannelsCount,
+          limit: 1,
+          reason: '❌ Channel limit reached. Please upgrade to Premium for unlimited channels.'
+        };
+      }
+      
+      return { 
+        allowed: true, 
+        tier: 'freemium',
+        currentCount: activeChannelsCount,
+        limit: 1,
+        reason: ''
+      };
+    }
   }
-}
 
   // Disable all channels
   static async disableAllChannels(ctx, botId) {
@@ -211,6 +165,29 @@ static async startAddChannel(ctx, botId) {
     } catch (error) {
       console.error('Enable all channels error:', error);
       await ctx.answerCbQuery('❌ Error enabling channels');
+    }
+  }
+
+  // Remove a specific channel
+  static async removeChannel(ctx, channelId) {
+    try {
+      await ctx.answerCbQuery('🗑️ Removing channel...');
+      
+      const channel = await ChannelJoin.findByPk(channelId);
+      if (!channel) {
+        await ctx.answerCbQuery('❌ Channel not found');
+        return;
+      }
+      
+      // Delete the channel from database
+      await channel.destroy();
+      
+      await ctx.reply(`✅ Channel "${channel.channel_title}" has been removed.`);
+      await this.showChannelManagement(ctx, channel.bot_id);
+      
+    } catch (error) {
+      console.error('Remove channel error:', error);
+      await ctx.answerCbQuery('❌ Error removing channel');
     }
   }
 
@@ -337,7 +314,7 @@ static async startAddChannel(ctx, botId) {
     }
   }
 
-  // Admin: Show channel management dashboard
+  // Admin: Show channel management dashboard - UPDATED (removed plan/limit display)
   static async showChannelManagement(ctx, botId) {
     try {
       const channels = await ChannelJoin.findAll({
@@ -369,10 +346,31 @@ static async startAddChannel(ctx, botId) {
         `• Use "Add Channel" to require joining\n` +
         `• Users must join ALL channels to access this bot`;
 
-      const keyboardButtons = [
-        [Markup.button.callback('➕ Add Channel', `channel_add_${botId}`)],
-      ];
+      const keyboardButtons = [];
+      
+      // Add channel button (always show, limit check happens in startAddChannel)
+      keyboardButtons.push(
+        [Markup.button.callback('➕ Add Channel', `channel_add_${botId}`)]
+      );
 
+      // Add remove buttons for each channel
+      if (channels.length > 0) {
+        channels.forEach(channel => {
+          const statusEmoji = channel.is_active ? '✅' : '🚫';
+          keyboardButtons.push([
+            Markup.button.callback(
+              `${statusEmoji} ${channel.channel_title}`, 
+              `channel_info_${channel.id}`
+            ),
+            Markup.button.callback(
+              '🗑️ Remove', 
+              `channel_remove_${channel.id}`
+            )
+          ]);
+        });
+      }
+
+      // Global enable/disable buttons
       if (activeChannels.length > 0) {
         keyboardButtons.push(
           [Markup.button.callback('🚫 Disable All Channels', `channel_disable_all_${botId}`)]
@@ -421,7 +419,103 @@ static async startAddChannel(ctx, botId) {
     }
   }
 
-  // Admin: Start add channel process
+  // Show channel info
+  static async showChannelInfo(ctx, channelId) {
+    try {
+      await ctx.answerCbQuery();
+      
+      const channel = await ChannelJoin.findByPk(channelId);
+      if (!channel) {
+        await ctx.reply('❌ Channel not found.');
+        return;
+      }
+      
+      const message = `📋 *Channel Information*\n\n` +
+        `*Title:* ${channel.channel_title}\n` +
+        `*Username:* @${channel.channel_username}\n` +
+        `*ID:* \`${channel.channel_id}\`\n` +
+        `*Status:* ${channel.is_active ? '✅ Active' : '🚫 Inactive'}\n` +
+        `*Added:* ${channel.created_at.toLocaleDateString()}\n\n` +
+        `*Instructions:*\n` +
+        `1. Make sure your bot is admin in this channel\n` +
+        `2. Users must join this channel to access your bot\n` +
+        `3. You can disable/enable as needed`;
+      
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback(channel.is_active ? '🚫 Disable' : '✅ Enable', 
+            `channel_toggle_${channel.id}`)
+        ],
+        [Markup.button.callback('🗑️ Remove Channel', `channel_remove_confirm_${channel.id}`)],
+        [Markup.button.callback('🔙 Back', `channel_manage_${channel.bot_id}`)]
+      ]);
+      
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      
+    } catch (error) {
+      console.error('Show channel info error:', error);
+      await ctx.answerCbQuery('❌ Error showing channel info');
+    }
+  }
+
+  // Toggle channel status
+  static async toggleChannelStatus(ctx, channelId) {
+    try {
+      const channel = await ChannelJoin.findByPk(channelId);
+      if (!channel) {
+        await ctx.answerCbQuery('❌ Channel not found');
+        return;
+      }
+      
+      const newStatus = !channel.is_active;
+      await channel.update({ is_active: newStatus });
+      
+      await ctx.answerCbQuery(newStatus ? '✅ Channel enabled' : '🚫 Channel disabled');
+      await this.showChannelInfo(ctx, channelId);
+      
+    } catch (error) {
+      console.error('Toggle channel status error:', error);
+      await ctx.answerCbQuery('❌ Error toggling channel');
+    }
+  }
+
+  // Confirm channel removal
+  static async confirmRemoveChannel(ctx, channelId) {
+    try {
+      const channel = await ChannelJoin.findByPk(channelId);
+      if (!channel) {
+        await ctx.answerCbQuery('❌ Channel not found');
+        return;
+      }
+      
+      const message = `⚠️ *Confirm Channel Removal*\n\n` +
+        `Are you sure you want to remove this channel?\n\n` +
+        `*Channel:* ${channel.channel_title}\n` +
+        `*Username:* @${channel.channel_username}\n\n` +
+        `*Note:* This action cannot be undone. Users will no longer be required to join this channel.`;
+      
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Yes, Remove', `channel_remove_${channelId}`),
+          Markup.button.callback('❌ Cancel', `channel_info_${channelId}`)
+        ]
+      ]);
+      
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      
+    } catch (error) {
+      console.error('Confirm remove channel error:', error);
+      await ctx.answerCbQuery('❌ Error confirming removal');
+    }
+  }
+
+  // Admin: Start add channel process - UPDATED (simplified, only show limits when reached)
   static async startAddChannel(ctx, botId) {
     try {
       await ctx.answerCbQuery();
@@ -429,6 +523,7 @@ static async startAddChannel(ctx, botId) {
       // Check channel limit before allowing addition
       const limitCheck = await this.checkChannelLimit(ctx, botId);
       if (!limitCheck.allowed) {
+        // Only show the limit message when user tries to add beyond their limit
         await ctx.reply(limitCheck.reason, { 
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
@@ -455,8 +550,6 @@ static async startAddChannel(ctx, botId) {
         `• Your bot must be admin in the channel\n` +
         `• Use the channel username (with @)\n` +
         `• Channel title can be any descriptive name\n\n` +
-        `*Your Plan:* ${limitCheck.tier === 'premium' ? '💎 Premium' : '🎫 Freemium'}\n` +
-        `*Channel Limit:* ${limitCheck.tier === 'premium' ? 'Unlimited' : '1 channel'}\n\n` +
         `*Cancel:* Type /cancel`,
         { 
           parse_mode: 'Markdown',
@@ -474,80 +567,81 @@ static async startAddChannel(ctx, botId) {
 
   // Admin: Process channel addition
   static async processAddChannel(ctx, botId, input) {
-  try {
-    if (input === '/cancel') {
-      this.channelSessions?.delete(ctx.from.id);
-      await ctx.reply('❌ Channel addition cancelled.');
-      await this.showChannelManagement(ctx, botId);
-      return;
-    }
-
-    // Check channel limit again (safety measure)
-    const limitCheck = await this.checkChannelLimit(ctx, botId);
-    if (!limitCheck.allowed) {
-      await ctx.reply(limitCheck.reason, { 
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
-          [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
-        ])
-      });
-      this.channelSessions?.delete(ctx.from.id);
-      return;
-    }
-
-    // Parse input: "@username Channel Title" or "channel_id @username Channel Title"
-    const match = input.match(/^(@[a-zA-Z0-9_]+)\s+(.+)$/);
-    if (!match) {
-      await ctx.reply(
-        '❌ Invalid format. Please use:\n\n' +
-        '`@channel_username Channel Title`\n\n' +
-        '*Example:*\n' +
-        '`@MyChannel My Awesome Channel`\n\n' +
-        '*Important:* Your bot must be admin in the channel!',
-        { parse_mode: 'Markdown' }
-      );
-      return;
-    }
-
-    const [, channelUsername, channelTitle] = match;
-    
-    // Use the username as the channel ID (Telegram API can handle both)
-    const channelId = channelUsername;
-
-    // Check if channel already exists
-    const existingChannel = await ChannelJoin.findOne({
-      where: { 
-        bot_id: botId, 
-        channel_username: channelUsername 
+    try {
+      if (input === '/cancel') {
+        this.channelSessions?.delete(ctx.from.id);
+        await ctx.reply('❌ Channel addition cancelled.');
+        await this.showChannelManagement(ctx, botId);
+        return;
       }
-    });
 
-    if (existingChannel) {
-      await existingChannel.update({ is_active: true });
-      await ctx.reply(`✅ Channel "${channelTitle}" re-enabled successfully!`);
-    } else {
-      await ChannelJoin.create({
-        bot_id: botId,
-        channel_id: channelId,
-        channel_username: channelUsername,
-        channel_title: channelTitle,
-        is_active: true
+      // Check channel limit again (safety measure)
+      const limitCheck = await this.checkChannelLimit(ctx, botId);
+      if (!limitCheck.allowed) {
+        // Only show the limit message when user tries to add beyond their limit
+        await ctx.reply(limitCheck.reason, { 
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+            [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
+          ])
+        });
+        this.channelSessions?.delete(ctx.from.id);
+        return;
+      }
+
+      // Parse input: "@username Channel Title" or "channel_id @username Channel Title"
+      const match = input.match(/^(@[a-zA-Z0-9_]+)\s+(.+)$/);
+      if (!match) {
+        await ctx.reply(
+          '❌ Invalid format. Please use:\n\n' +
+          '`@channel_username Channel Title`\n\n' +
+          '*Example:*\n' +
+          '`@MyChannel My Awesome Channel`\n\n' +
+          '*Important:* Your bot must be admin in the channel!',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      const [, channelUsername, channelTitle] = match;
+      
+      // Use the username as the channel ID (Telegram API can handle both)
+      const channelId = channelUsername;
+
+      // Check if channel already exists
+      const existingChannel = await ChannelJoin.findOne({
+        where: { 
+          bot_id: botId, 
+          channel_username: channelUsername 
+        }
       });
-      await ctx.reply(`✅ Channel "${channelTitle}" added successfully!\n\n` +
-        `*Important:* Make sure your bot is admin in @${channelUsername.replace('@', '')} for the force join to work!`,
-        { parse_mode: 'Markdown' }
-      );
+
+      if (existingChannel) {
+        await existingChannel.update({ is_active: true });
+        await ctx.reply(`✅ Channel "${channelTitle}" re-enabled successfully!`);
+      } else {
+        await ChannelJoin.create({
+          bot_id: botId,
+          channel_id: channelId,
+          channel_username: channelUsername,
+          channel_title: channelTitle,
+          is_active: true
+        });
+        await ctx.reply(`✅ Channel "${channelTitle}" added successfully!\n\n` +
+          `*Important:* Make sure your bot is admin in @${channelUsername.replace('@', '')} for the force join to work!`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      this.channelSessions?.delete(ctx.from.id);
+      await this.showChannelManagement(ctx, botId);
+
+    } catch (error) {
+      console.error('Process add channel error:', error);
+      await ctx.reply('❌ Error adding channel. Please make sure:\n\n• The channel exists\n• Your bot is admin in the channel\n• You used the correct format');
     }
-
-    this.channelSessions?.delete(ctx.from.id);
-    await this.showChannelManagement(ctx, botId);
-
-  } catch (error) {
-    console.error('Process add channel error:', error);
-    await ctx.reply('❌ Error adding channel. Please make sure:\n\n• The channel exists\n• Your bot is admin in the channel\n• You used the correct format');
   }
-}
 
   // Handle text input for channel sessions
   static async handleChannelTextInput(ctx, text) {
@@ -636,6 +730,26 @@ static async startAddChannel(ctx, botId) {
     bot.action(/^channel_enable_all_(.+)/, async (ctx) => {
       const botId = ctx.match[1];
       await ChannelJoinHandler.enableAllChannels(ctx, botId);
+    });
+    
+    bot.action(/^channel_info_(.+)/, async (ctx) => {
+      const channelId = ctx.match[1];
+      await ChannelJoinHandler.showChannelInfo(ctx, channelId);
+    });
+    
+    bot.action(/^channel_toggle_(.+)/, async (ctx) => {
+      const channelId = ctx.match[1];
+      await ChannelJoinHandler.toggleChannelStatus(ctx, channelId);
+    });
+    
+    bot.action(/^channel_remove_(.+)/, async (ctx) => {
+      const channelId = ctx.match[1];
+      await ChannelJoinHandler.removeChannel(ctx, channelId);
+    });
+    
+    bot.action(/^channel_remove_confirm_(.+)/, async (ctx) => {
+      const channelId = ctx.match[1];
+      await ChannelJoinHandler.confirmRemoveChannel(ctx, channelId);
     });
     
     bot.action(/^channel_test_(.+)/, async (ctx) => {

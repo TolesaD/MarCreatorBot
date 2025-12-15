@@ -56,17 +56,49 @@ const AdCampaign = require('./AdCampaign');
 const AdEvent = require('./AdEvent');
 const PlatformSettings = require('./PlatformSettings');
 
-// ==================== FIXED: REMOVE DUPLICATE ASSOCIATIONS ====================
-// Only define associations that are NOT already defined in model files
+// ==================== ASSOCIATIONS ====================
 
-// Bot belongs to User (owner) - Keep this if not in Bot.js
+// User associations
+User.hasMany(Bot, {
+  foreignKey: 'owner_id',
+  sourceKey: 'telegram_id',
+  as: 'OwnedBots'
+});
+
+// Bot belongs to User (owner)
 Bot.belongsTo(User, { 
   foreignKey: 'owner_id', 
   targetKey: 'telegram_id', 
   as: 'Owner' 
 });
 
-// Admin associations - Keep these
+// User has one Wallet with alias 'WalletUser'
+User.hasOne(Wallet, {
+  foreignKey: 'user_id',
+  targetKey: 'telegram_id',
+  as: 'WalletUser'
+});
+
+Wallet.belongsTo(User, {
+  foreignKey: 'user_id',
+  targetKey: 'telegram_id',
+  as: 'WalletUser'
+});
+
+// User has many Subscriptions with alias 'SubscriptionUser'
+User.hasMany(UserSubscription, {
+  foreignKey: 'user_id',
+  targetKey: 'telegram_id',
+  as: 'SubscriptionUser'  // FIXED: Added alias for subscriptions
+});
+
+UserSubscription.belongsTo(User, {
+  foreignKey: 'user_id',
+  targetKey: 'telegram_id',
+  as: 'SubscriptionUser'
+});
+
+// Admin associations
 Admin.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'AdminBot'
@@ -83,7 +115,7 @@ Bot.hasMany(Admin, {
   as: 'Admins' 
 });
 
-// Feedback associations - Keep these
+// Feedback associations
 Feedback.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'FeedbackBot'
@@ -100,7 +132,7 @@ Feedback.belongsTo(User, {
   as: 'FeedbackReplier'
 });
 
-// UserLog associations - Keep these
+// UserLog associations
 UserLog.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'UserLogBot'
@@ -111,7 +143,7 @@ Bot.hasMany(UserLog, {
   as: 'UserLogs' 
 });
 
-// BroadcastHistory associations - Keep these
+// BroadcastHistory associations
 BroadcastHistory.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'BroadcastBot'
@@ -128,22 +160,15 @@ BroadcastHistory.belongsTo(User, {
   as: 'BroadcastSender'
 });
 
-// Botomics associations - Keep these
-Wallet.belongsTo(User, {
-  foreignKey: 'user_id',
-  targetKey: 'telegram_id',
-  as: 'WalletUser'
-});
-
+// Botomics associations
 WalletTransaction.belongsTo(Wallet, {
   foreignKey: 'wallet_id',
-  as: 'TransactionWallet'
+  as: 'wallet'
 });
 
-UserSubscription.belongsTo(User, {
-  foreignKey: 'user_id',
-  targetKey: 'telegram_id',
-  as: 'SubscriptionUser'
+Wallet.hasMany(WalletTransaction, {
+  foreignKey: 'wallet_id',
+  as: 'transactions'
 });
 
 BotAdSettings.belongsTo(Bot, {
@@ -206,21 +231,6 @@ if (Referral) {
     foreignKey: 'bot_id', 
     as: 'Referrals' 
   });
-  
-  // REMOVED: These are already defined in Referral.js
-  /*
-  Referral.belongsTo(User, {
-    foreignKey: 'referrer_id',
-    targetKey: 'telegram_id',
-    as: 'ReferrerUser'
-  });
-
-  Referral.belongsTo(User, {
-    foreignKey: 'referred_id',
-    targetKey: 'telegram_id',
-    as: 'ReferredUser'
-  });
-  */
 }
 
 if (Withdrawal) {

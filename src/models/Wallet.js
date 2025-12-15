@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+﻿const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../database/db');
 
 const Wallet = sequelize.define('Wallet', {
@@ -15,6 +15,11 @@ const Wallet = sequelize.define('Wallet', {
   balance: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00
+  },
+  wallet_address: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    unique: true
   },
   currency: {
     type: DataTypes.STRING(10),
@@ -40,6 +45,14 @@ const Wallet = sequelize.define('Wallet', {
   tableName: 'wallets',
   timestamps: false,
   hooks: {
+    beforeCreate: (wallet) => {
+      // Generate wallet address if not provided
+      if (!wallet.wallet_address) {
+        const timestamp = Date.now().toString(36).toUpperCase();
+        const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+        wallet.wallet_address = `BOTOMICS_${wallet.user_id}_${timestamp}_${random}`;
+      }
+    },
     beforeUpdate: (wallet) => {
       wallet.updated_at = new Date();
     }
@@ -47,6 +60,9 @@ const Wallet = sequelize.define('Wallet', {
   indexes: [
     {
       fields: ['user_id']
+    },
+    {
+      fields: ['wallet_address']
     },
     {
       fields: ['is_frozen']

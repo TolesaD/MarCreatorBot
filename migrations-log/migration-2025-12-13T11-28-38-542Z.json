@@ -1,0 +1,21 @@
+{
+  "timestamp": "2025-12-13T11:28:38.538Z",
+  "addedColumns": [
+    "pinned_message_id",
+    "pinned_chat_id",
+    "pinned_message_content",
+    "pinned_message_type",
+    "pinned_file_id",
+    "pinned_at",
+    "pinned_by",
+    "original_creator_id",
+    "ownership_transferred",
+    "ownership_history"
+  ],
+  "migratedCount": 1,
+  "summary": {
+    "total_bots": "152",
+    "with_old_pinned": "1",
+    "with_new_pinned": "1"
+  }
+}

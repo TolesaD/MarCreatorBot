@@ -15,11 +15,12 @@ const WalletTransaction = sequelize.define('WalletTransaction', {
       key: 'id'
     }
   },
+  // REMOVED user_id column since it doesn't exist in database
   type: {
     type: DataTypes.STRING(20),
     allowNull: false,
     validate: {
-      isIn: [['deposit', 'withdrawal', 'transfer', 'subscription', 'donation', 'ad_revenue', 'reward']]
+      isIn: [['deposit', 'withdrawal', 'transfer', 'subscription', 'donation', 'ad_revenue', 'reward', 'admin_adjustment', 'admin_deduction', 'admin_action', 'fee', 'refund']]
     }
   },
   amount: {
@@ -69,8 +70,20 @@ const WalletTransaction = sequelize.define('WalletTransaction', {
     },
     {
       fields: ['created_at']
+    },
+    {
+      fields: ['status']
     }
   ]
 });
+
+// Add associations method - FIXED to not include user_id
+WalletTransaction.associate = function(models) {
+  WalletTransaction.belongsTo(models.Wallet, {
+    foreignKey: 'wallet_id',
+    as: 'wallet'  // Changed from 'Wallet' to 'wallet' for consistency
+  });
+  // NO association with User since we don't have user_id
+};
 
 module.exports = WalletTransaction;

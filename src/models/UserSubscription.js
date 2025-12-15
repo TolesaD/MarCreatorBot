@@ -19,12 +19,12 @@ const UserSubscription = sequelize.define('UserSubscription', {
     }
   },
   status: {
-    type: DataTypes.STRING(20),
-    defaultValue: 'active',
-    validate: {
-      isIn: [['active', 'cancelled', 'expired']]
-    }
-  },
+  type: DataTypes.STRING(20),
+  defaultValue: 'active',
+  validate: {
+    isIn: [['active', 'cancelled', 'expired', 'revoked']]  // ADD 'revoked' here
+  }
+},
   monthly_price: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 5.00

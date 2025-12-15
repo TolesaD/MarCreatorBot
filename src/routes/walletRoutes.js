@@ -1,4 +1,4 @@
-// src/routes/walletRoutes.js - COMPLETE PRODUCTION VERSION
+// src/routes/walletRoutes.js - COMPLETE PRODUCTION VERSION WITH TELEGRAM AUTH
 const express = require('express');
 const router = express.Router();
 const WalletService = require('../services/walletService');
@@ -7,45 +7,112 @@ const { Wallet, WalletTransaction, UserSubscription, User, Withdrawal } = requir
 const Sequelize = require('sequelize');
 const Op = Sequelize.Op;
 
-// Simple authentication middleware
-function authenticate(req, res, next) {
-    const authHeader = req.headers.authorization;
+// Telegram Web App authentication middleware
+function authenticateTelegram(req, res, next) {
+    // Get Telegram init data from header or query
+    const initData = req.headers['x-telegram-init-data'] || req.query.initData;
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Authentication required' });
+    if (!initData) {
+        console.warn('❌ No Telegram init data provided');
+        return res.status(401).json({ 
+            success: false, 
+            error: 'Authentication required. Please open from Telegram.' 
+        });
     }
     
-    // Extract user ID from query parameters or body
+    try {
+        // Parse init data to get user info
+        const params = new URLSearchParams(initData);
+        const userParam = params.get('user');
+        
+        if (!userParam) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Invalid Telegram session.' 
+            });
+        }
+        
+        const user = JSON.parse(userParam);
+        req.telegramUser = user;
+        
+        // Extract userId from request
+        const userId = req.query.userId || req.body.userId || user.id;
+        
+        if (!userId) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'User ID is required' 
+            });
+        }
+        
+        req.userId = userId;
+        console.log(`✅ Authenticated Telegram user: ${userId}`);
+        next();
+        
+    } catch (error) {
+        console.error('Telegram authentication error:', error);
+        return res.status(401).json({ 
+            success: false, 
+            error: 'Invalid Telegram authentication.' 
+        });
+    }
+}
+
+// Simple fallback authentication for admin/testing
+function authenticateSimple(req, res, next) {
     const userId = req.query.userId || req.body.userId;
+    
     if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+        return res.status(400).json({ 
+            success: false, 
+            error: 'User ID is required' 
+        });
     }
     
     req.userId = userId;
     next();
 }
 
-// Wallet balance
-router.get('/wallet/balance', authenticate, async (req, res) => {
+// Wallet balance - supports both auth methods
+router.get('/wallet/balance', authenticateTelegram, async (req, res) => {
     try {
+        console.log(`📊 Getting balance for user ${req.userId}`);
+        
         const balance = await WalletService.getBalance(req.userId);
-        res.json(balance);
+        
+        res.json({
+            success: true,
+            wallet: balance
+        });
     } catch (error) {
         console.error('Balance API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
     }
 });
 
 // Deposit request
-router.post('/wallet/deposit', authenticate, async (req, res) => {
+router.post('/wallet/deposit', authenticateTelegram, async (req, res) => {
     try {
         const { amount, description, proofImageUrl } = req.body;
         
         if (!amount || amount < 5) {
-            return res.status(400).json({ error: 'Minimum deposit amount is 5 BOM' });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Minimum deposit amount is 5 BOM' 
+            });
         }
         
-        const result = await WalletService.deposit(req.userId, amount, description || `Deposit of ${amount} BOM`, proofImageUrl);
+        console.log(`💰 Deposit request from ${req.userId}: ${amount} BOM`);
+        
+        const result = await WalletService.deposit(
+            req.userId, 
+            amount, 
+            description || `Deposit of ${amount} BOM`, 
+            proofImageUrl
+        );
         
         res.json({
             success: true,
@@ -60,24 +127,40 @@ router.post('/wallet/deposit', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Deposit API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Withdrawal request
-router.post('/wallet/withdraw', authenticate, async (req, res) => {
+router.post('/wallet/withdraw', authenticateTelegram, async (req, res) => {
     try {
         const { amount, method, payoutDetails } = req.body;
         
         if (!amount || amount < 20) {
-            return res.status(400).json({ error: 'Minimum withdrawal amount is 20 BOM' });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Minimum withdrawal amount is 20 BOM' 
+            });
         }
         
         if (!method || !payoutDetails) {
-            return res.status(400).json({ error: 'Withdrawal method and details are required' });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Withdrawal method and details are required' 
+            });
         }
         
-        const result = await WalletService.requestWithdrawal(req.userId, amount, method, payoutDetails);
+        console.log(`📤 Withdrawal request from ${req.userId}: ${amount} BOM via ${method}`);
+        
+        const result = await WalletService.requestWithdrawal(
+            req.userId, 
+            amount, 
+            method, 
+            payoutDetails
+        );
         
         res.json({
             success: true,
@@ -92,38 +175,92 @@ router.post('/wallet/withdraw', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Withdrawal API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
-// Transfer BOM
-router.post('/wallet/transfer', authenticate, async (req, res) => {
+// Transfer BOM between users
+router.post('/wallet/transfer', authenticateTelegram, async (req, res) => {
     try {
-        const { senderId, receiverId, amount, description } = req.body;
+        const { receiverId, amount, description } = req.body;
+        const senderId = req.userId;
         
-        if (!senderId || !receiverId || !amount) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        console.log(`🔄 Transfer attempt from ${senderId} to ${receiverId}: ${amount} BOM`);
+        
+        if (!receiverId || !amount) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Missing required fields' 
+            });
         }
         
         if (amount <= 0) {
-            return res.status(400).json({ error: 'Amount must be positive' });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Amount must be positive' 
+            });
         }
         
-        const result = await WalletService.transfer(senderId, receiverId, amount, description || `Transfer of ${amount} BOM`);
+        if (amount < 0.01) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Minimum transfer amount is 0.01 BOM' 
+            });
+        }
+        
+        // Check if users exist
+        const [sender, receiver] = await Promise.all([
+            User.findOne({ where: { telegram_id: senderId } }),
+            User.findOne({ where: { telegram_id: receiverId } })
+        ]);
+        
+        if (!sender) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Sender not found' 
+            });
+        }
+        
+        if (!receiver) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Receiver not found' 
+            });
+        }
+        
+        const result = await WalletService.transfer(
+            senderId, 
+            receiverId, 
+            amount, 
+            description || `Transfer of ${amount} BOM`
+        );
         
         res.json({
             success: true,
-            transaction: result,
-            message: 'Transfer completed successfully.'
+            message: 'Transfer completed successfully.',
+            transfer: result,
+            details: {
+                from: sender.username || `User ${senderId}`,
+                to: receiver.username || `User ${receiverId}`,
+                amount: amount,
+                fee: result.fee || 0,
+                netAmount: result.netAmount || amount
+            }
         });
     } catch (error) {
         console.error('Transfer API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Transaction history
-router.get('/wallet/transactions', authenticate, async (req, res) => {
+router.get('/wallet/transactions', authenticateTelegram, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
@@ -131,9 +268,12 @@ router.get('/wallet/transactions', authenticate, async (req, res) => {
         const status = req.query.status;
         const period = req.query.period || '30days';
         
+        console.log(`📊 Getting transactions for user ${req.userId}, page ${page}`);
+        
         const wallet = await Wallet.findOne({ where: { user_id: req.userId } });
         if (!wallet) {
             return res.json({
+                success: true,
                 transactions: [],
                 pagination: {
                     currentPage: page,
@@ -171,6 +311,7 @@ router.get('/wallet/transactions', authenticate, async (req, res) => {
         });
         
         res.json({
+            success: true,
             transactions: rows.map(tx => ({
                 id: tx.id,
                 type: tx.type,
@@ -191,17 +332,23 @@ router.get('/wallet/transactions', authenticate, async (req, res) => {
         
     } catch (error) {
         console.error('Transactions API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Subscription status
-router.get('/subscription/status', authenticate, async (req, res) => {
+router.get('/subscription/status', authenticateTelegram, async (req, res) => {
     try {
+        console.log(`🎫 Getting subscription status for user ${req.userId}`);
+        
         const tier = await SubscriptionService.getSubscriptionTier(req.userId);
         const subscription = await SubscriptionService.getUserSubscription(req.userId);
         
         res.json({
+            success: true,
             tier: tier,
             subscription: subscription ? {
                 id: subscription.id,
@@ -217,29 +364,51 @@ router.get('/subscription/status', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Subscription status API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Upgrade to premium
-router.post('/subscription/upgrade', authenticate, async (req, res) => {
+router.post('/subscription/upgrade', authenticateTelegram, async (req, res) => {
     try {
-        const { userId, plan } = req.body;
+        const { plan } = req.body;
+        const userId = req.userId;
         
-        if (!userId) {
-            return res.status(400).json({ error: 'User ID is required' });
+        if (!plan) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Plan type is required (monthly or yearly)' 
+            });
         }
         
+        console.log(`⭐ Premium upgrade for user ${userId}, plan: ${plan}`);
+        
         let subscription;
+        
         if (plan === 'yearly') {
-            // Process yearly plan (50 BOM)
+            // Process yearly plan (30 BOM)
             const wallet = await WalletService.getBalance(userId);
-            if (wallet.balance < 50) {
-                return res.status(400).json({ error: 'Insufficient balance for yearly plan (50 BOM required)' });
+            if (wallet.balance < 30) {
+                return res.status(400).json({ 
+                    success: false,
+                    error: 'Insufficient balance for yearly plan (30 BOM required)' 
+                });
             }
             
             // Process payment
-            await WalletService.transfer(userId, '0', 50, 'Yearly premium subscription');
+            const transferResult = await WalletService.transfer(
+                userId, 
+                '0', // Platform wallet
+                30, 
+                'Yearly premium subscription'
+            );
+            
+            if (!transferResult.success) {
+                throw new Error('Payment failed: ' + (transferResult.error || 'Unknown error'));
+            }
             
             // Create yearly subscription
             const now = new Date();
@@ -250,12 +419,12 @@ router.post('/subscription/upgrade', authenticate, async (req, res) => {
                 user_id: userId,
                 tier: 'premium',
                 status: 'active',
-                monthly_price: 30/12,
+                monthly_price: 2.5, // 30/12 = 2.5 BOM per month equivalent
                 currency: 'BOM',
                 current_period_start: now,
                 current_period_end: periodEnd,
                 auto_renew: true,
-                metadata: { plan: 'yearly' }
+                metadata: { plan: 'yearly', payment_transaction_id: transferResult.transactionId }
             });
             
             // Update user premium status
@@ -263,6 +432,7 @@ router.post('/subscription/upgrade', authenticate, async (req, res) => {
                 { premium_status: 'premium', premium_expires_at: periodEnd },
                 { where: { telegram_id: userId } }
             );
+            
         } else {
             // Process monthly plan (3 BOM)
             subscription = await SubscriptionService.upgradeToPremium(userId);
@@ -280,18 +450,19 @@ router.post('/subscription/upgrade', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Subscription upgrade API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Cancel subscription
-router.post('/subscription/cancel', authenticate, async (req, res) => {
+router.post('/subscription/cancel', authenticateTelegram, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.userId;
         
-        if (!userId) {
-            return res.status(400).json({ error: 'User ID is required' });
-        }
+        console.log(`❌ Cancelling subscription for user ${userId}`);
         
         const subscription = await SubscriptionService.cancelSubscription(userId);
         
@@ -306,18 +477,162 @@ router.post('/subscription/cancel', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Subscription cancel API error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+// Toggle auto-renew
+router.post('/subscription/auto-renew', authenticateTelegram, async (req, res) => {
+    try {
+        const { autoRenew } = req.body;
+        const userId = req.userId;
+        
+        if (typeof autoRenew !== 'boolean') {
+            return res.status(400).json({ 
+                success: false,
+                error: 'autoRenew must be true or false' 
+            });
+        }
+        
+        console.log(`🔄 Setting auto-renew to ${autoRenew} for user ${userId}`);
+        
+        const subscription = await UserSubscription.findOne({ 
+            where: { user_id: userId, status: 'active' }
+        });
+        
+        if (!subscription) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'No active subscription found' 
+            });
+        }
+        
+        await subscription.update({ auto_renew: autoRenew });
+        
+        res.json({
+            success: true,
+            message: `Auto-renewal ${autoRenew ? 'enabled' : 'disabled'}`,
+            auto_renew: subscription.auto_renew
+        });
+    } catch (error) {
+        console.error('Auto-renew API error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+// Admin endpoints (simple auth for admin)
+router.get('/admin/deposits/pending', authenticateSimple, async (req, res) => {
+    try {
+        const userId = req.userId;
+        
+        // Check if user is admin (platform creator)
+        if (userId !== '1827785384' && userId !== 1827785384) {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Admin access required' 
+            });
+        }
+        
+        console.log('📥 Admin fetching pending deposits');
+        
+        const deposits = await WalletService.getPendingDeposits();
+        
+        res.json({
+            success: true,
+            deposits: deposits.map(deposit => ({
+                id: deposit.id,
+                user_id: deposit.Wallet?.user_id,
+                amount: deposit.amount,
+                description: deposit.description,
+                proof_image: deposit.metadata?.proof_image,
+                created_at: deposit.created_at,
+                metadata: deposit.metadata
+            }))
+        });
+    } catch (error) {
+        console.error('Admin deposits API error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+router.post('/admin/deposit/:id/approve', authenticateSimple, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const adminId = req.userId;
+        
+        // Check if user is admin
+        if (adminId !== '1827785384' && adminId !== 1827785384) {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Admin access required' 
+            });
+        }
+        
+        console.log(`✅ Admin ${adminId} approving deposit ${id}`);
+        
+        const result = await WalletService.confirmDeposit(id, adminId);
+        
+        res.json({
+            success: true,
+            message: 'Deposit approved successfully',
+            transaction: result.transaction,
+            new_balance: result.newBalance
+        });
+    } catch (error) {
+        console.error('Approve deposit API error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 
 // Health check endpoint
 router.get('/wallet/health', (req, res) => {
     res.json({ 
+        success: true,
         status: 'online', 
         service: 'Botomics Wallet API',
         version: '2.0.0',
         timestamp: new Date().toISOString()
     });
+});
+
+// Test endpoint for debugging
+router.get('/wallet/test', authenticateTelegram, async (req, res) => {
+    try {
+        res.json({
+            success: true,
+            message: 'Wallet API is working!',
+            user_id: req.userId,
+            telegram_user: req.telegramUser,
+            timestamp: new Date().toISOString(),
+            endpoints: {
+                balance: 'GET /api/wallet/balance?userId=YOUR_ID',
+                deposit: 'POST /api/wallet/deposit',
+                withdraw: 'POST /api/wallet/withdraw',
+                transfer: 'POST /api/wallet/transfer',
+                transactions: 'GET /api/wallet/transactions?userId=YOUR_ID',
+                subscription_status: 'GET /api/subscription/status?userId=YOUR_ID',
+                upgrade: 'POST /api/subscription/upgrade',
+                cancel: 'POST /api/subscription/cancel'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
 });
 
 module.exports = router;

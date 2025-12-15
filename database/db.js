@@ -6,12 +6,6 @@ const config = createConfig();
 console.log('🗄️ Database configuration:');
 console.log('   Environment:', config.NODE_ENV);
 
-// Detect cPanel environment
-const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
-if (isCpanel) {
-  console.log('   Platform: Yegara.com cPanel');
-}
-
 // Enhanced database URL parsing
 let dbHost = 'unknown';
 let dbName = 'unknown';
@@ -81,7 +75,7 @@ const sequelize = new Sequelize(config.DATABASE_URL, {
 
 console.log('✅ Database configured successfully');
 
-// Enhanced database connection function
+// Enhanced database connection function - FIXED FOR PRODUCTION
 async function connectDB() {
   try {
     console.log('🗄️ Establishing database connection...');
@@ -95,14 +89,39 @@ async function connectDB() {
     await Promise.race([connectionPromise, timeoutPromise]);
     console.log('✅ Database connection established successfully');
     
-    // Sync all models with better error handling
-    console.log('🔄 Synchronizing database models...');
-    await sequelize.sync({ 
-      alter: true,
-      force: false,
-      logging: config.NODE_ENV === 'development' ? console.log : false
-    });
-    console.log('✅ All database models synchronized');
+    // IMPORTANT: DO NOT SYNC IN PRODUCTION
+    if (config.NODE_ENV === 'development') {
+      console.log('🔄 Development mode: Synchronizing database models...');
+      await sequelize.sync({ 
+        alter: true,
+        force: false,
+        logging: console.log
+      });
+      console.log('✅ All database models synchronized');
+    } else {
+      // In production, just verify the connection and check if tables exist
+      console.log('🚨 PRODUCTION MODE: Skipping database sync (using migrations only)');
+      
+      // Verify tables exist without modifying them
+      try {
+        const [results] = await sequelize.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public'
+          AND table_name IN ('users', 'wallets', 'bots')
+          LIMIT 3
+        `);
+        
+        const foundTables = results.map(r => r.table_name);
+        console.log(`✅ Found ${foundTables.length} core tables: ${foundTables.join(', ')}`);
+        
+        if (foundTables.length === 0) {
+          console.warn('⚠️  No tables found! If this is a new deployment, run migrations manually.');
+        }
+      } catch (checkError) {
+        console.log('⚠️  Table check failed (non-critical):', checkError.message);
+      }
+    }
     
     // Test basic operations
     try {
@@ -127,13 +146,16 @@ async function connectDB() {
       console.error('💡 SSL connection issue - check SSL configuration');
     } else if (error.message.includes('database')) {
       console.error('💡 Database not found - verify database name exists');
+    } else if (error.message.includes('foreign key constraint')) {
+      console.error('💡 Foreign key constraint violation - check existing data integrity');
+      console.error('💡 Run this SQL to find invalid references:');
+      console.error(`
+        SELECT w.user_id 
+        FROM wallets w 
+        LEFT JOIN users u ON w.user_id = u.telegram_id 
+        WHERE u.telegram_id IS NULL;
+      `);
     }
-    
-    console.error('\n💡 Yegara.com Database Setup:');
-    console.error('   1. Go to cPanel → PostgreSQL Databases');
-    console.error('   2. Create database and user');
-    console.error('   3. Add user to database with ALL PRIVILEGES');
-    console.error('   4. Set DATABASE_URL in Environment Variables');
     
     if (config.NODE_ENV === 'production') {
       console.error('💥 Cannot continue without database in production');
@@ -219,7 +241,7 @@ async function disconnectDB() {
   }
 }
 
-// Test connection on startup in development
+// Test connection on startup in development ONLY
 if (config.NODE_ENV === 'development') {
   console.log('🔧 Development mode: Testing database connection...');
   connectDB().then(success => {
@@ -231,6 +253,8 @@ if (config.NODE_ENV === 'development') {
   }).catch(error => {
     console.log('⚠️  Development database test failed:', error.message);
   });
+} else {
+  console.log('🚀 Production mode: Database will connect when app starts');
 }
 
 module.exports = {
